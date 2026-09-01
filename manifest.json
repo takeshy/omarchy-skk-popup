@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "takeshy.skk-popup",
+  "name": "SKK Popup",
+  "version": "1.0.0",
+  "author": "takeshy",
+  "license": "MIT",
+  "description": "Summon an SKK Japanese input panel from any app, then copy (and paste) the text.",
+  "kinds": ["panel", "bar-widget"],
+  "keepLoaded": true,
+  "entryPoints": {
+    "panel": "Panel.qml",
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "SKK Popup",
+    "description": "「あ」 button that opens the SKK input panel.",
+    "category": "Input",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}
