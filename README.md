@@ -58,17 +58,15 @@ make install-engine                                                            #
 
 - **エンジン・辞書**: 上記の取得 / 更新
 - **追加辞書**: 自分の SKK-JISYO / JSON ファイルのパスを追加・削除（エンジンが即ロード + `extra-dicts.json` に保存。`~/.local/share/skk-popup/dict/` に直接置いても可）
-- **ショートカット**: 既定で `CTRL SHIFT, K` が入力済み＆バインド済み（`hyprctl` で毎セッション自動適用、**hypr 設定ファイルは変更しません**）。変えたいときは別のキー（Hyprland bind 記法）を入れて「バインド」、使わないなら「解除」（`panel-settings.json` に `""` として残るので次回以降も無効）
-
-自動バインドはシェルが起動している限り有効です。dotfiles に明示的に持ちたい／シェル非依存にしたい場合は、Settings で「解除」してから hypr 設定に直接書きます:
+- **ショートカット**: Hyprland 0.56 は実行時バインド (`hyprctl keyword`) を無効化しているため、**パネルからキーは割り当てできません**。キー（既定 `CTRL SHIFT, K`）を入れて「反映」すると、貼り付け用の設定行を生成します。「bind = 行をコピー」/「o.bind 行をコピー」でクリップボードへ入るので、下記いずれかに貼って `hyprctl reload`（または `omarchy restart shell`）
 
 ```ini
-# ~/.config/hypr/bindings.conf
+# ~/.config/hypr/bindings.conf  (bind = 行)
 bind = CTRL SHIFT, K, exec, omarchy-shell shell summon takeshy.skk-popup '{}'
 ```
 
 ```lua
--- ~/.config/hypr/bindings.lua
+-- ~/.config/hypr/bindings.lua  (Omarchy Quattro の Lua 設定はこちら)
 o.bind("CTRL + SHIFT + K", "SKK popup", "omarchy-shell shell summon takeshy.skk-popup '{}'")
 ```
 

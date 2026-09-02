@@ -39,11 +39,14 @@ Item {
   property int dictEntries: 0
   property bool setupRunning: false
   property string setupStatus: ""
-  // Bound by default; re-applied every session. Cleared via Settings → 解除
-  // (persists as "" in panel-settings.json so it stays off).
+  // Hyprland's non-legacy parser disables `hyprctl keyword`, so the panel
+  // can't bind the key itself — Settings just hands you the config line.
   property string hotkey: "CTRL SHIFT, K"
-  property string hotkeyPrev: ""   // last spec we bound, to unbind on change
   property string hotkeyStatus: ""
+  readonly property string hotkeyBindLine: "bind = " + root.hotkey + ", exec, " + root.summonCmd
+  readonly property string hotkeyLuaLine: 'o.bind("'
+    + root.hotkey.replace(/,/g, " ").replace(/^\s+|\s+$/g, "").split(/\s+/).join(" + ")
+    + '", "SKK popup", "' + root.summonCmd + '")'
   readonly property string setupScript: root.pluginDir + "/scripts/setup.sh"
   readonly property string summonCmd: "omarchy-shell shell summon " + root.pluginId + " '{}'"
 
@@ -299,27 +302,18 @@ Item {
     }
   }
 
-  // ---- Ctrl+Shift+K style hotkey: hyprctl only, re-applied every session.
-  // quiet: the session-start re-apply — don't touch the status line or
-  // rewrite the settings file (a missing file just means "use the default").
-  function applyHotkey(spec, quiet) {
+  // Remember the chosen spec and copy the matching config line to the
+  // clipboard (the panel can't bind it itself — see hotkeyBindLine).
+  function setHotkey(spec) {
     spec = ("" + (spec || "")).replace(/^\s+|\s+$/g, "")
-    var parts = []
-    if (root.hotkeyPrev !== "" && root.hotkeyPrev !== spec)
-      parts.push("keyword unbind " + root.hotkeyPrev)
-    if (spec !== "")
-      parts.push("keyword bind " + spec + ", exec, " + root.summonCmd)
-    if (parts.length > 0) {
-      hotkeyProc.command = ["hyprctl", "--batch", parts.join(" ; ")]
-      hotkeyProc.running = false
-      hotkeyProc.running = true
-    }
-    root.hotkeyPrev = spec
-    root.hotkey = spec
-    if (!quiet) {
-      root.hotkeyStatus = spec === "" ? "解除しました" : "バインドしました: " + spec
-      panelSettingsFile.save()
-    }
+    root.hotkey = spec === "" ? "CTRL SHIFT, K" : spec
+    panelSettingsFile.save()
+  }
+  function copyText(text, note) {
+    clipProc.command = ["wl-copy", "--", text]
+    clipProc.running = false
+    clipProc.running = true
+    root.hotkeyStatus = note || "コピーしました"
   }
 
   function addDictPath(path) {
@@ -392,15 +386,13 @@ Item {
     }
   }
 
-  // hyprctl for the configurable hotkey (see applyHotkey).
   Process {
-    id: hotkeyProc
+    id: clipProc
     running: false
-    stdout: SplitParser { onRead: function(data) { console.warn("hyprctl:", data) } }
-    stderr: SplitParser { onRead: function(data) { console.warn("hyprctl:", data) } }
+    stderr: SplitParser { onRead: function(data) { console.warn("wl-copy:", data) } }
   }
 
-  // Panel-only settings (currently just the hotkey). hypr config untouched.
+  // Panel-only settings (the remembered hotkey spec for the config line).
   FileView {
     id: panelSettingsFile
     path: root.dataHome + "/panel-settings.json"
@@ -409,13 +401,9 @@ Item {
     onLoaded: {
       try {
         var j = JSON.parse(text())
-        // A stored string (including "") is the user's choice; keep it.
-        if (j && typeof j.hotkey === "string") root.hotkey = j.hotkey
+        if (j && typeof j.hotkey === "string" && j.hotkey !== "") root.hotkey = j.hotkey
       } catch (e) {}
-      if (root.hotkey !== "") root.applyHotkey(root.hotkey, true)
     }
-    // No file yet: bind the default.
-    onLoadFailed: { if (root.hotkey !== "") root.applyHotkey(root.hotkey, true) }
     function save() {
       setText(JSON.stringify({ hotkey: root.hotkey }) + "\n")
     }
@@ -1046,23 +1034,43 @@ Item {
               spacing: Style.spacing.sm
               TextField {
                 id: hotkeyField
-                width: parent.width - hotkeyBindBtn.width - hotkeyClearBtn.width - Style.spacing.sm * 2
+                width: parent.width - hotkeySetBtn.width - Style.spacing.sm
                 placeholderText: "CTRL SHIFT, K"
                 foreground: root.foreground
                 accent: root.accent
-                onAccepted: root.applyHotkey(text)
+                onAccepted: root.setHotkey(text)
               }
               SkkButton {
-                id: hotkeyBindBtn
-                label: "バインド"; primary: true
+                id: hotkeySetBtn
+                label: "反映"
                 foreground: root.foreground; accent: root.accent; fontFamily: root.fontFamily
-                onClicked: root.applyHotkey(hotkeyField.text)
+                onClicked: root.setHotkey(hotkeyField.text)
+              }
+            }
+            Text {
+              width: parent.width; textFormat: Text.PlainText; wrapMode: Text.Wrap
+              text: "Hyprland 0.56 は実行時バインド (hyprctl keyword) を無効化しているため、パネルからは割り当てできません。下の行を設定に貼り付けて " + "hyprctl reload"
+              color: root.foreground; opacity: 0.6
+              font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall
+            }
+            Text {
+              width: parent.width; textFormat: Text.PlainText; wrapMode: Text.Wrap
+              text: root.hotkeyBindLine
+              color: root.foreground
+              font.family: "monospace"; font.pixelSize: Style.font.bodySmall
+            }
+            Row {
+              width: parent.width
+              spacing: Style.spacing.sm
+              SkkButton {
+                label: "bind = 行をコピー"; primary: true
+                foreground: root.foreground; accent: root.accent; fontFamily: root.fontFamily
+                onClicked: root.copyText(root.hotkeyBindLine, "bind = 行をコピーしました (bindings.conf 用)")
               }
               SkkButton {
-                id: hotkeyClearBtn
-                label: "解除"
+                label: "o.bind 行をコピー"
                 foreground: root.foreground; accent: root.accent; fontFamily: root.fontFamily
-                onClicked: { hotkeyField.text = ""; root.applyHotkey("") }
+                onClicked: root.copyText(root.hotkeyLuaLine, "o.bind 行をコピーしました (bindings.lua 用)")
               }
             }
             Text {
@@ -1070,12 +1078,6 @@ Item {
               width: parent.width; textFormat: Text.PlainText; wrapMode: Text.Wrap
               text: root.hotkeyStatus
               color: root.foreground; opacity: 0.7
-              font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall
-            }
-            Text {
-              width: parent.width; textFormat: Text.PlainText; wrapMode: Text.Wrap
-              text: "Hyprland の bind 記法 (例: CTRL SHIFT, K)。シェル起動時に自動で再適用します。hypr 設定ファイルは変更しません。"
-              color: root.foreground; opacity: 0.6
               font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall
             }
           }
