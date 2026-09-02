@@ -1318,6 +1318,31 @@ func (e *Engine) SetCursor(displayPos int) {
 	c.clampCursor()
 }
 
+// SetSelection sets a selection dragged out with the mouse over the
+// committed text. Both arguments are display offsets. Selection only spans
+// committed text, so a request that arrives mid-composition (a ▽ preedit or
+// pending romaji) is ignored — the same rule Shift-selection follows.
+// anchor == caret just moves the caret and drops any selection.
+func (e *Engine) SetSelection(anchor, caret int) {
+	if e.registerOpen {
+		return
+	}
+	c := &e.main
+	if c.composing || c.roman != "" || c.abbrevMode {
+		return
+	}
+	n := len(c.text)
+	anchor = max(0, min(anchor, n))
+	caret = max(0, min(caret, n))
+	c.goalCol = -1
+	c.cursor = caret
+	if anchor == caret {
+		c.selAnchor = -1
+	} else {
+		c.selAnchor = anchor
+	}
+}
+
 // ---- small helpers -----------------------------------------------------------
 
 func containsString(list []string, s string) bool { return indexOfString(list, s) >= 0 }

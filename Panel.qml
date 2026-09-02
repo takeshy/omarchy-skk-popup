@@ -696,6 +696,7 @@ Item {
               width: editorFlick.width
               readOnly: true
               selectByMouse: false
+              persistentSelection: true
               wrapMode: TextEdit.Wrap
               textFormat: TextEdit.PlainText
               color: root.foreground
@@ -705,12 +706,38 @@ Item {
               font.pixelSize: Style.font.heading
               activeFocusOnPress: false
 
-              MouseArea {
-                anchors.fill: parent
-                cursorShape: Qt.IBeamCursor
-                onClicked: function(mouse) {
-                  root.send({ op: "setCursor", pos: editor.positionAt(mouse.x, mouse.y) })
+              // The engine owns the caret + selection. A covering MouseArea's
+              // drag events are unreliable on the layer-shell surface, so use
+              // pointer handlers (same idiom as the header drag): tap moves the
+              // caret, drag selects a range. We only ever send offsets.
+              HoverHandler { cursorShape: Qt.IBeamCursor }
+
+              TapHandler {
+                acceptedButtons: Qt.LeftButton
+                onTapped: function(point) {
+                  root.send({ op: "setCursor", pos: editor.positionAt(point.position.x, point.position.y) })
                   keyCatcher.forceActiveFocus()
+                }
+              }
+
+              DragHandler {
+                id: editorDrag
+                target: null
+                dragThreshold: 3
+                property int anchorPos: -1
+                onActiveChanged: {
+                  if (active) {
+                    anchorPos = editor.positionAt(centroid.pressPosition.x, centroid.pressPosition.y)
+                    keyCatcher.forceActiveFocus()
+                  } else {
+                    anchorPos = -1
+                  }
+                }
+                onActiveTranslationChanged: {
+                  if (!active || anchorPos < 0) return
+                  var x = centroid.pressPosition.x + activeTranslation.x
+                  var y = centroid.pressPosition.y + activeTranslation.y
+                  root.send({ op: "setSelection", anchor: anchorPos, pos: editor.positionAt(x, y) })
                 }
               }
 

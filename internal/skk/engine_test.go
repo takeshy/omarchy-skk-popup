@@ -485,6 +485,45 @@ func TestShiftSelection(t *testing.T) {
 	}
 }
 
+func TestMouseSelection(t *testing.T) {
+	e, clip, _ := newTestEngine(t)
+	typeKeys(e, "aiueo") // あいうえお
+
+	// A drag from offset 1 to 4 selects いうえ; Ctrl+C copies it, no close.
+	e.SetSelection(1, 4)
+	if s := e.State(); s.SelStart != 1 || s.SelEnd != 4 || s.Cursor != 4 {
+		t.Fatalf("mouse selection = %+v", s)
+	}
+	e.HandleKey(Key{Key: "c", Ctrl: true})
+	if len(clip.copied) != 1 || clip.copied[0] != "いうえ" {
+		t.Fatalf("ctrl+c = %v", clip.copied)
+	}
+
+	// A drag backwards (anchor after caret) still yields an ordered range,
+	// and Ctrl+X cuts it.
+	e.SetSelection(3, 0) // select あいう
+	if s := e.State(); s.SelStart != 0 || s.SelEnd != 3 {
+		t.Fatalf("backward drag = %+v", s)
+	}
+	e.HandleKey(Key{Key: "x", Ctrl: true})
+	if got := e.Text(); got != "えお" || clip.copied[len(clip.copied)-1] != "あいう" {
+		t.Fatalf("cut = %q clip=%v", got, clip.copied)
+	}
+
+	// A zero-length drag (plain click) just moves the caret, no selection.
+	e.SetSelection(1, 1)
+	if s := e.State(); s.Cursor != 1 || s.SelStart != s.SelEnd {
+		t.Fatalf("click = %+v", s)
+	}
+
+	// Mid-composition the drag is ignored (selection spans committed text only).
+	typeKeys(e, "Ka")
+	e.SetSelection(0, 2)
+	if s := e.State(); s.SelStart != s.SelEnd {
+		t.Fatalf("selection during composition = %+v", s)
+	}
+}
+
 func TestEmacsBindings(t *testing.T) {
 	e, _, _ := newTestEngine(t)
 	typeKeys(e, "aiueo") // あいうえお

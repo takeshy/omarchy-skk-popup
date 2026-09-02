@@ -204,13 +204,14 @@ func fetchDictionary(dir, name string) error {
 // ---- serve -----------------------------------------------------------------
 
 type request struct {
-	Op    string `json:"op"`
-	Key   string `json:"key"`
-	Ctrl  bool   `json:"ctrl"`
-	Shift bool   `json:"shift"`
-	Alt   bool   `json:"alt"`
-	Pos   int    `json:"pos"`
-	Path  string `json:"path"` // addDict / removeDict
+	Op     string `json:"op"`
+	Key    string `json:"key"`
+	Ctrl   bool   `json:"ctrl"`
+	Shift  bool   `json:"shift"`
+	Alt    bool   `json:"alt"`
+	Pos    int    `json:"pos"`
+	Anchor int    `json:"anchor"` // setSelection: drag start offset
+	Path   string `json:"path"`   // addDict / removeDict
 }
 
 func expandUser(path string) string {
@@ -400,6 +401,8 @@ func serve() error {
 			engine.CancelRegister()
 		case "setCursor":
 			engine.SetCursor(req.Pos)
+		case "setSelection":
+			engine.SetSelection(req.Anchor, req.Pos)
 		case "addDict":
 			path := strings.TrimSpace(req.Path)
 			if path == "" {

@@ -146,6 +146,7 @@ rm -rf "$HOME/.config/skk-popup"                          # config.toml (skk-pop
 - `Ctrl+V` / `Ctrl+Shift+V`: クリップボードの内容を挿入
 - 非変換時の確定文字列の編集 (web の textarea 風):
   - `Shift+矢印` / `Shift+Home` / `Shift+End`: 範囲選択（選択中に入力・`Backspace` で置換）
+  - マウスドラッグでも範囲選択できます（変換入力中は不可。確定文字列のみ）
   - `Ctrl+O`: 全選択 / `Ctrl+C`: 選択をコピー（閉じない）/ `Ctrl+X`: 選択を切り取り
   - Emacs 風: `Ctrl+F` / `Ctrl+B` カーソル前後 / `Ctrl+A` 行頭 / `Ctrl+E` 行末 / `Ctrl+K` 行末まで削除 / `Ctrl+U` 行頭まで削除
   - `Ctrl+Z`: 元に戻す
@@ -209,6 +210,7 @@ paste_key = "ctrl+shift+v"
 {"op":"copy"} {"op":"close"} {"op":"paste"} {"op":"toggleMode"}
 {"op":"registerSave"} {"op":"registerCancel"} {"op":"registerToggleMode"}
 {"op":"setCursor","pos":3}   // 表示文字列上のオフセットへキャレット移動 (クリック)
+{"op":"setSelection","anchor":2,"pos":6}  // マウスドラッグの範囲選択 (確定文字列のみ)
 {"op":"addDict","path":"~/.skk/SKK-JISYO.user"}   // 追加辞書を即ロード + 永続化
 {"op":"removeDict","path":"~/.skk/SKK-JISYO.user"} // 一覧から削除 (メモリは次回起動で反映)
 {"op":"quit"}
