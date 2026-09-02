@@ -27,10 +27,21 @@ Item {
   // ---- engine render state ----
   property bool engineReady: false
   property int engineRestarts: 0
+  property string engineVersion: ""
+  property string enginePath: ""
   // The engine binary was not found anywhere; offer to download it.
   property bool engineMissing: false
   property bool engineFetching: false
   property string engineFetchError: ""
+  // True when the running engine is the copy fetch-engine.sh manages
+  // (<data>/skk-popup/bin or a vendored <plugin dir>/bin), i.e. the one the
+  // update button would actually replace. A manual ~/.local/bin or PATH
+  // install, or a pinned $SKK_POPUP_ENGINE, is updated by its own means.
+  readonly property bool engineManaged: root.enginePath.indexOf("/skk-popup/bin/") >= 0
+    || (root.pluginDir.length > 0 && root.enginePath.indexOf(root.pluginDir + "/bin/") === 0)
+  readonly property bool engineOverridden: Quickshell.env("SKK_POPUP_ENGINE").length > 0
+  readonly property bool engineUpdatable: root.engineReady && root.engineManaged
+    && !root.engineOverridden && !root.engineFetching
   property string bufferText: ""
   property int bufferCursor: 0
   property string modeLabel: "SKK かな"
@@ -167,7 +178,10 @@ Item {
     }
     if (msg.type === "ready") {
       root.engineReady = true
+      root.engineMissing = false
       root.engineRestarts = 0
+      root.engineVersion = msg.version || ""
+      root.enginePath = msg.enginePath || ""
       if (!msg.dictionaries || msg.dictionaries.length === 0)
         root.statusText = "No dictionary. Run: skk-popup-engine dict fetch"
       // The engine came up (or restarted) while the panel is already open:
@@ -226,8 +240,23 @@ Item {
     if (root.engineFetching) return
     root.engineFetching = true
     root.engineFetchError = ""
-    root.statusText = "skk-popup-engine をダウンロード中…"
+    root.statusText = root.engineReady
+      ? "skk-popup-engine を更新中…"
+      : "skk-popup-engine をダウンロード中…"
     engineFetch.running = true
+  }
+
+  // Stop the running engine (if any) and start it again so it re-execs the
+  // freshly downloaded binary.
+  property bool engineRestartPending: false
+  function restartEngine() {
+    root.engineRestarts = 0
+    if (engine.running) {
+      root.engineRestartPending = true
+      engine.running = false
+    } else {
+      engine.running = true
+    }
   }
 
   // The shell injects `manifest` right after the item is created; wait for
@@ -247,6 +276,12 @@ Item {
     }
     onExited: function(exitCode, exitStatus) {
       root.engineReady = false
+      if (root.engineRestartPending) {
+        // We stopped it on purpose (engine update); bring it straight back.
+        root.engineRestartPending = false
+        engine.running = true
+        return
+      }
       if (exitCode === 127) {
         // Nothing on the lookup path was exec'able.
         root.engineMissing = true
@@ -278,11 +313,9 @@ Item {
     onExited: function(exitCode, exitStatus) {
       root.engineFetching = false
       if (exitCode === 0) {
-        root.engineMissing = false
         root.engineFetchError = ""
-        root.engineRestarts = 0
-        root.statusText = "skk-popup-engine を取得しました。起動中…"
-        engine.running = true
+        root.statusText = "skk-popup-engine を起動中…"
+        root.restartEngine()
       } else {
         root.statusText = root.engineFetchError !== ""
           ? "取得失敗: " + root.engineFetchError
@@ -566,6 +599,14 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             spacing: root.gap
 
+            // Small update affordance, only when the running engine is the
+            // one this button can replace (see engineUpdatable).
+            SkkButton {
+              visible: root.engineUpdatable
+              label: "エンジン更新"
+              foreground: root.foreground; accent: root.accent; fontFamily: root.fontFamily
+              onClicked: root.fetchEngine()
+            }
             SkkButton { label: "Close"; foreground: root.foreground; accent: root.accent; fontFamily: root.fontFamily; onClicked: root.dismiss() }
             SkkButton {
               visible: root.engineMissing || root.engineFetching

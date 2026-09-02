@@ -266,6 +266,7 @@ func serve() error {
 		engine.SetInputHistoryJSON(st.Load(store.InputHistoryFile, "[]"))
 	}
 
+	exePath, _ := os.Executable()
 	emit(map[string]any{
 		"type":         "ready",
 		"version":      version,
@@ -273,6 +274,7 @@ func serve() error {
 		"dictionaries": loaded,
 		"dataDir":      store.DataDir(),
 		"configPath":   config.Path(),
+		"enginePath":   exePath,
 	})
 	emit(stateMessage(engine.State()))
 

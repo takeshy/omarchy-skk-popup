@@ -40,7 +40,9 @@ omarchy plugin add https://github.com/takeshy/omarchy-skk-popup.git --enable
 
 ### 2. エンジンと辞書を用意する
 
-パネルを初めて出すと、エンジン (`skk-popup-engine`) が未インストールなら **「エンジンを取得」ボタン**が出ます。押すと [Releases](https://github.com/takeshy/omarchy-skk-popup/releases/latest) からこのマシンの arch のバイナリを `~/.local/share/skk-popup/bin/skk-popup-engine` にダウンロードします (プラグインが `omarchy plugin add` 以外で行う唯一のネットワークアクセス。ボタンを押したときだけ)。押し直せば最新版に更新できます。
+パネルを初めて出すと、エンジン (`skk-popup-engine`) が未インストールなら **「エンジンを取得」ボタン**が出ます。押すと [Releases](https://github.com/takeshy/omarchy-skk-popup/releases/latest) からこのマシンの arch のバイナリを `~/.local/share/skk-popup/bin/skk-popup-engine` にダウンロードして起動します (プラグインが `omarchy plugin add` 以外で行う唯一のネットワークアクセス。ボタンを押したときだけ)。
+
+以後、このダウンロード版で動いている間はフッターに小さな **「エンジン更新」ボタン**が出ます。押すと同じ場所を最新 Release で置き換えてエンジンを再起動します。手動インストール版 (`~/.local/bin` など) や `$SKK_POPUP_ENGINE` 指定で動いている場合は、そちらが優先されるため「エンジン更新」ボタンは出ません (更新はその方法自身で行ってください。CLI からは `sh ~/.config/omarchy/plugins/takeshy.skk-popup/scripts/fetch-engine.sh` でも取得・更新できます)。
 
 自分でビルドしたものを使いたい場合は、以下のいずれか。ダウンロード版より優先されます:
 
@@ -177,7 +179,7 @@ paste_key = "ctrl+shift+v"
 {"op":"quit"}
 
 // ← stdout
-{"type":"ready","entries":123456,"dictionaries":["…/SKK-JISYO.L"],"dataDir":"…","configPath":"…"}
+{"type":"ready","version":"1.2.0","entries":123456,"dictionaries":["…/SKK-JISYO.L"],"dataDir":"…","configPath":"…","enginePath":"…/skk-popup-engine"}
 {"type":"state","text":"▽にほんご","cursor":5,"mode":"SKK 変換","candidate":"","candidateActive":false,
  "status":"Enter: copy / Shift+Enter: newline / Space: convert",
  "register":{"open":false,"reading":"","text":"","cursor":0,"mode":"","candidate":"","error":""},
