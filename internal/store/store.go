@@ -24,7 +24,10 @@ const (
 	UserDictFile     = "userdict.json"
 	HistoryFile      = "history.json"
 	InputHistoryFile = "input-history.json"
-	flushInterval    = 2 * time.Second
+	// ExtraDictsFile holds a JSON array of extra dictionary paths added
+	// from the panel's Settings (skk-popup-only; not shared with the Wails app).
+	ExtraDictsFile = "extra-dicts.json"
+	flushInterval  = 2 * time.Second
 )
 
 type Store struct {

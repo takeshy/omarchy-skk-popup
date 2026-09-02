@@ -31,7 +31,19 @@ Item {
   property string enginePath: ""
   property bool menuOpen: false
   property bool helpOpen: false
+  property bool settingsOpen: false
   readonly property string pluginVersion: (manifest && manifest.version) ? String(manifest.version) : ""
+
+  // ---- settings state ----
+  property var extraDicts: []
+  property int dictEntries: 0
+  property bool setupRunning: false
+  property string setupStatus: ""
+  property string hotkey: ""       // persisted; re-bound each session
+  property string hotkeyPrev: ""   // last spec we bound, to unbind on change
+  property string hotkeyStatus: ""
+  readonly property string setupScript: root.pluginDir + "/scripts/setup.sh"
+  readonly property string summonCmd: "omarchy-shell shell summon " + root.pluginId + " '{}'"
 
   readonly property string helpText:
     "── かな入力 ──\n" +
@@ -62,22 +74,8 @@ Item {
     "Enter (未変換) / Copy  コピーして閉じる\n" +
     "ヘッダーをドラッグ  パネル移動 / 右クリックで中央\n" +
     "Ctrl+Shift+K (表示中)  入力欄へフォーカス"
-  // The engine binary was not found anywhere; offer to download it.
+  // No engine on the lookup path (exit 127); Settings offers to set it up.
   property bool engineMissing: false
-  property bool engineFetching: false
-  property string engineFetchError: ""
-  // True when the running engine is the copy fetch-engine.sh manages
-  // (<data>/skk-popup/bin or a vendored <plugin dir>/bin), i.e. the one the
-  // update button would actually replace. A manual ~/.local/bin or PATH
-  // install, or a pinned $SKK_POPUP_ENGINE, is updated by its own means.
-  readonly property bool engineManaged: root.enginePath.indexOf("/skk-popup/bin/") >= 0
-    || (root.pluginDir.length > 0 && root.enginePath.indexOf(root.pluginDir + "/bin/") === 0)
-  readonly property bool engineOverridden: {
-    var v = Quickshell.env("SKK_POPUP_ENGINE")
-    return !!v && v.length > 0
-  }
-  readonly property bool engineUpdatable: root.engineReady && root.engineManaged
-    && !root.engineOverridden && !root.engineFetching
   property string bufferText: ""
   property int bufferCursor: 0
   property string modeLabel: "SKK かな"
@@ -218,6 +216,8 @@ Item {
       root.engineRestarts = 0
       root.engineVersion = msg.version || ""
       root.enginePath = msg.enginePath || ""
+      root.extraDicts = msg.extraDicts || []
+      root.dictEntries = msg.entries || 0
       if (!msg.dictionaries || msg.dictionaries.length === 0)
         root.statusText = "No dictionary. Run: skk-popup-engine dict fetch"
       // The engine came up (or restarted) while the panel is already open:
@@ -225,9 +225,15 @@ Item {
       if (root.opened) root.send({ op: "shown" })
       return
     }
+    if (msg.type === "config") {
+      root.extraDicts = msg.extraDicts || []
+      root.dictEntries = msg.entries || 0
+      return
+    }
     if (msg.type === "error") {
       console.warn("skk-popup-engine:", msg.message)
       root.statusText = msg.message || "Engine error"
+      if (root.settingsOpen) root.setupStatus = msg.message || ""
       return
     }
     if (msg.type !== "state") return
@@ -269,17 +275,13 @@ Item {
   // nothing is exec'able — that is what flips engineMissing on.
   readonly property string engineBootstrap: 'D="${XDG_DATA_HOME:-$HOME/.local/share}/skk-popup/bin/skk-popup-engine"; for p in "$SKK_POPUP_ENGINE" "$1/bin/skk-popup-engine" "$D" "$HOME/.local/bin/skk-popup-engine" "$HOME/go/bin/skk-popup-engine" /usr/local/bin/skk-popup-engine /usr/bin/skk-popup-engine; do [ -n "$p" ] && [ -x "$p" ] && exec "$p" serve; done; exec skk-popup-engine serve'
 
-  // Downloads the prebuilt engine for this architecture into the data dir.
-  readonly property string engineFetchScript: root.pluginDir + "/scripts/fetch-engine.sh"
-
-  function fetchEngine() {
-    if (root.engineFetching) return
-    root.engineFetching = true
-    root.engineFetchError = ""
-    root.statusText = root.engineReady
-      ? "skk-popup-engine を更新中…"
-      : "skk-popup-engine をダウンロード中…"
-    engineFetch.running = true
+  // setup.sh: download the engine if missing, then `dict fetch`.
+  function runSetup() {
+    if (root.setupRunning) return
+    root.setupRunning = true
+    root.setupStatus = "エンジンと辞書を準備中…"
+    root.statusText = root.setupStatus
+    setupProc.running = true
   }
 
   // Stop the running engine (if any) and start it again so it re-execs the
@@ -294,6 +296,32 @@ Item {
       engine.running = true
     }
   }
+
+  // ---- Ctrl+Shift+K style hotkey: hyprctl only, re-applied every session.
+  function applyHotkey(spec) {
+    spec = ("" + (spec || "")).replace(/^\s+|\s+$/g, "")
+    var parts = []
+    if (root.hotkeyPrev !== "" && root.hotkeyPrev !== spec)
+      parts.push("keyword unbind " + root.hotkeyPrev)
+    if (spec !== "")
+      parts.push("keyword bind " + spec + ", exec, " + root.summonCmd)
+    if (parts.length > 0) {
+      hotkeyProc.command = ["hyprctl", "--batch", parts.join(" ; ")]
+      hotkeyProc.running = false
+      hotkeyProc.running = true
+    }
+    root.hotkeyPrev = spec
+    root.hotkey = spec
+    root.hotkeyStatus = spec === "" ? "解除しました" : "バインドしました: " + spec
+    panelSettingsFile.save()
+  }
+
+  function addDictPath(path) {
+    path = ("" + (path || "")).replace(/^\s+|\s+$/g, "")
+    if (path === "") return
+    root.send({ op: "addDict", path: path })
+  }
+  function removeDictPath(path) { root.send({ op: "removeDict", path: path }) }
 
   // The shell injects `manifest` right after the item is created; wait for
   // that before starting so `<plugin dir>/bin` is on the lookup list.
@@ -321,7 +349,7 @@ Item {
       if (exitCode === 127) {
         // Nothing on the lookup path was exec'able.
         root.engineMissing = true
-        root.statusText = "skk-popup-engine が見つかりません。取得してください。"
+        root.statusText = "skk-popup-engine 未インストール — ⋮ → 設定 で取得"
         return
       }
       root.statusText = "Engine exited (" + exitCode + ")."
@@ -339,24 +367,50 @@ Item {
   }
 
   Process {
-    id: engineFetch
-    command: ["sh", root.engineFetchScript]
+    id: setupProc
+    command: ["sh", root.setupScript]
     running: false
-    stdout: SplitParser { onRead: function(data) { console.warn("fetch-engine:", data) } }
+    stdout: SplitParser { onRead: function(data) { console.warn("setup:", data) } }
     stderr: SplitParser {
-      onRead: function(data) { console.warn("fetch-engine:", data); root.engineFetchError = data }
+      onRead: function(data) { console.warn("setup:", data); root.setupStatus = data }
     }
     onExited: function(exitCode, exitStatus) {
-      root.engineFetching = false
+      root.setupRunning = false
       if (exitCode === 0) {
-        root.engineFetchError = ""
-        root.statusText = "skk-popup-engine を起動中…"
+        root.setupStatus = "完了。エンジンを起動中…"
         root.restartEngine()
       } else {
-        root.statusText = root.engineFetchError !== ""
-          ? "取得失敗: " + root.engineFetchError
-          : "skk-popup-engine の取得に失敗しました (" + exitCode + ")"
+        root.setupStatus = "失敗 (" + exitCode + "): " + root.setupStatus
+        root.statusText = root.setupStatus
       }
+    }
+  }
+
+  // hyprctl for the configurable hotkey (see applyHotkey).
+  Process {
+    id: hotkeyProc
+    running: false
+    stdout: SplitParser { onRead: function(data) { console.warn("hyprctl:", data) } }
+    stderr: SplitParser { onRead: function(data) { console.warn("hyprctl:", data) } }
+  }
+
+  // Panel-only settings (currently just the hotkey). hypr config untouched.
+  FileView {
+    id: panelSettingsFile
+    path: root.dataHome + "/panel-settings.json"
+    atomicWrites: true
+    printErrors: false
+    onLoaded: {
+      try {
+        var j = JSON.parse(text())
+        if (j && typeof j.hotkey === "string") {
+          root.hotkey = j.hotkey
+          if (root.hotkey !== "") root.applyHotkey(root.hotkey)
+        }
+      } catch (e) {}
+    }
+    function save() {
+      setText(JSON.stringify({ hotkey: root.hotkey }) + "\n")
     }
   }
 
@@ -472,14 +526,25 @@ Item {
       borderSpec: root.borderSpec
       padding: root.pad
 
-      MouseArea { anchors.fill: parent; onClicked: function(mouse) { keyCatcher.forceActiveFocus(); mouse.accepted = true } }
+      MouseArea {
+        anchors.fill: parent
+        onClicked: function(mouse) {
+          if (!root.settingsOpen) keyCatcher.forceActiveFocus()
+          mouse.accepted = true
+        }
+      }
 
       Item {
         id: keyCatcher
         anchors.fill: parent
-        focus: true
+        focus: !root.settingsOpen
         Keys.priority: Keys.BeforeItem
         Keys.onPressed: function(event) {
+          // Settings has real text fields; let them keep the keyboard.
+          if (root.settingsOpen) {
+            if (event.key === Qt.Key_Escape) { root.settingsOpen = false; keyCatcher.forceActiveFocus() }
+            return
+          }
           if (root.menuOpen || root.helpOpen) {
             if (event.key === Qt.Key_Escape) { root.menuOpen = false; root.helpOpen = false }
             event.accepted = true
@@ -690,15 +755,15 @@ Item {
 
             SkkButton { label: "Close"; foreground: root.foreground; accent: root.accent; fontFamily: root.fontFamily; onClicked: root.dismiss() }
             SkkButton {
-              visible: root.engineMissing || root.engineFetching
-              label: root.engineFetching ? "取得中…" : "エンジンを取得"
+              visible: root.engineMissing || root.setupRunning
+              label: root.setupRunning ? "準備中…" : "エンジンと辞書を取得"
               primary: true
-              opacity: root.engineFetching ? 0.6 : 1
+              opacity: root.setupRunning ? 0.6 : 1
               foreground: root.foreground; accent: root.accent; fontFamily: root.fontFamily
-              onClicked: root.fetchEngine()
+              onClicked: root.runSetup()
             }
             SkkButton {
-              visible: !root.engineMissing && !root.engineFetching
+              visible: !root.engineMissing && !root.setupRunning
               label: "Copy"; primary: true
               foreground: root.foreground; accent: root.accent; fontFamily: root.fontFamily
               onClicked: root.send({ op: "copy" })
@@ -739,7 +804,7 @@ Item {
               textFormat: Text.PlainText
               text: "SKK Popup" + (root.pluginVersion ? " v" + root.pluginVersion : "")
                 + "  ・  engine " + (root.engineReady ? (root.engineVersion || "?")
-                : (root.engineFetching ? "取得中…" : "未取得"))
+                : (root.setupRunning ? "準備中…" : "未取得"))
               color: root.foreground
               opacity: 0.7
               font.family: root.fontFamily
@@ -748,20 +813,16 @@ Item {
             }
 
             MenuRow {
+              label: "設定"
+              onActivated: { root.menuOpen = false; root.settingsOpen = true }
+            }
+            MenuRow {
               label: "パネルを中央に戻す"
               onActivated: { root.recenterCard(); root.menuOpen = false }
             }
             MenuRow {
               label: "ヘルプ (キー操作)"
               onActivated: { root.menuOpen = false; root.helpOpen = true }
-            }
-            MenuRow {
-              visible: root.engineReady || root.engineFetching
-              enabled: root.engineUpdatable
-              label: root.engineFetching
-                ? "エンジンを更新中…"
-                : (root.engineUpdatable ? "エンジンを更新" : "エンジンを更新 (手動版は対象外)")
-              onActivated: { root.fetchEngine(); root.menuOpen = false }
             }
           }
         }
@@ -816,6 +877,200 @@ Item {
             color: root.foreground
             font.family: root.fontFamily
             font.pixelSize: Style.font.bodySmall
+          }
+        }
+      }
+
+      // Settings overlay: engine+dict setup, extra dictionaries, hotkey.
+      Rectangle {
+        id: settingsOverlay
+        anchors.fill: parent
+        radius: root.cornerRadius
+        color: Util.alpha(root.background, 0.98)
+        visible: root.settingsOpen
+        onVisibleChanged: {
+          if (visible) {
+            hotkeyField.text = root.hotkey
+            settingsOverlay.forceActiveFocus()
+          }
+        }
+        Keys.onPressed: function(event) {
+          if (event.key === Qt.Key_Escape) {
+            root.settingsOpen = false
+            keyCatcher.forceActiveFocus()
+            event.accepted = true
+          }
+        }
+
+        MouseArea { anchors.fill: parent; onClicked: function(mouse) { mouse.accepted = true } }
+
+        Text {
+          id: settingsTitle
+          anchors { top: parent.top; left: parent.left; topMargin: root.pad; leftMargin: root.pad }
+          textFormat: Text.PlainText
+          text: "設定"
+          color: root.foreground
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.title
+          font.bold: true
+        }
+        SkkButton {
+          anchors { top: parent.top; right: parent.right; topMargin: root.pad; rightMargin: root.pad }
+          label: "閉じる"
+          foreground: root.foreground
+          accent: root.accent
+          fontFamily: root.fontFamily
+          onClicked: { root.settingsOpen = false; keyCatcher.forceActiveFocus() }
+        }
+
+        Flickable {
+          id: settingsFlick
+          anchors {
+            left: parent.left; right: parent.right; bottom: parent.bottom; top: settingsTitle.bottom
+            leftMargin: root.pad; rightMargin: root.pad; bottomMargin: root.pad; topMargin: root.gap
+          }
+          clip: true
+          contentWidth: width
+          contentHeight: settingsCol.implicitHeight
+          boundsBehavior: Flickable.StopAtBounds
+
+          Column {
+            id: settingsCol
+            width: settingsFlick.width
+            spacing: root.gap
+
+            Text {
+              width: parent.width; textFormat: Text.PlainText
+              text: "エンジン・辞書"
+              color: root.foreground; font.bold: true
+              font.family: root.fontFamily; font.pixelSize: Style.font.body
+            }
+            Text {
+              width: parent.width; textFormat: Text.PlainText; wrapMode: Text.Wrap
+              text: (root.engineReady ? "エンジン v" + (root.engineVersion || "?") : "エンジン: 未取得")
+                + "   /   " + (root.dictEntries > 0 ? "辞書 " + root.dictEntries + " 語" : "辞書: 未取得")
+              color: root.foreground; opacity: 0.75
+              font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall
+            }
+            SkkButton {
+              label: root.setupRunning ? "準備中…"
+                : ((root.engineReady && root.dictEntries > 0) ? "エンジンと辞書を更新" : "エンジンと辞書を取得")
+              primary: !root.engineReady || root.dictEntries === 0
+              opacity: root.setupRunning ? 0.6 : 1
+              foreground: root.foreground; accent: root.accent; fontFamily: root.fontFamily
+              onClicked: root.runSetup()
+            }
+            Text {
+              visible: root.setupStatus !== ""
+              width: parent.width; textFormat: Text.PlainText; wrapMode: Text.Wrap
+              text: root.setupStatus
+              color: root.foreground; opacity: 0.7
+              font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall
+            }
+
+            Rectangle { width: parent.width; height: 1; color: Util.alpha(root.foreground, 0.12) }
+
+            Text {
+              width: parent.width; textFormat: Text.PlainText
+              text: "追加辞書"
+              color: root.foreground; font.bold: true
+              font.family: root.fontFamily; font.pixelSize: Style.font.body
+            }
+            Repeater {
+              model: root.extraDicts
+              delegate: Item {
+                id: dictRow
+                required property string modelData
+                width: settingsCol.width
+                height: Math.max(dictPathText.implicitHeight, dictDelBtn.height)
+                Text {
+                  id: dictPathText
+                  anchors.left: parent.left; anchors.right: dictDelBtn.left
+                  anchors.rightMargin: Style.spacing.sm
+                  anchors.verticalCenter: parent.verticalCenter
+                  textFormat: Text.PlainText; text: dictRow.modelData; elide: Text.ElideMiddle
+                  color: root.foreground
+                  font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall
+                }
+                SkkButton {
+                  id: dictDelBtn
+                  anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                  label: "削除"
+                  foreground: root.foreground; accent: root.accent; fontFamily: root.fontFamily
+                  onClicked: root.removeDictPath(dictRow.modelData)
+                }
+              }
+            }
+            Row {
+              width: parent.width
+              spacing: Style.spacing.sm
+              TextField {
+                id: dictField
+                width: parent.width - dictAddBtn.width - Style.spacing.sm
+                placeholderText: "追加辞書ファイルのパス (SKK-JISYO 形式 / JSON)"
+                foreground: root.foreground
+                accent: root.accent
+                onAccepted: { root.addDictPath(text); text = "" }
+              }
+              SkkButton {
+                id: dictAddBtn
+                label: "追加"
+                foreground: root.foreground; accent: root.accent; fontFamily: root.fontFamily
+                onClicked: { root.addDictPath(dictField.text); dictField.text = "" }
+              }
+            }
+            Text {
+              width: parent.width; textFormat: Text.PlainText; wrapMode: Text.Wrap
+              text: "~/.local/share/skk-popup/dict/ に置いたファイルも自動で読まれます。削除は次回起動時に完全反映。"
+              color: root.foreground; opacity: 0.6
+              font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall
+            }
+
+            Rectangle { width: parent.width; height: 1; color: Util.alpha(root.foreground, 0.12) }
+
+            Text {
+              width: parent.width; textFormat: Text.PlainText
+              text: "ショートカット"
+              color: root.foreground; font.bold: true
+              font.family: root.fontFamily; font.pixelSize: Style.font.body
+            }
+            Row {
+              width: parent.width
+              spacing: Style.spacing.sm
+              TextField {
+                id: hotkeyField
+                width: parent.width - hotkeyBindBtn.width - hotkeyClearBtn.width - Style.spacing.sm * 2
+                placeholderText: "CTRL SHIFT, K"
+                foreground: root.foreground
+                accent: root.accent
+                onAccepted: root.applyHotkey(text)
+              }
+              SkkButton {
+                id: hotkeyBindBtn
+                label: "バインド"; primary: true
+                foreground: root.foreground; accent: root.accent; fontFamily: root.fontFamily
+                onClicked: root.applyHotkey(hotkeyField.text)
+              }
+              SkkButton {
+                id: hotkeyClearBtn
+                label: "解除"
+                foreground: root.foreground; accent: root.accent; fontFamily: root.fontFamily
+                onClicked: { hotkeyField.text = ""; root.applyHotkey("") }
+              }
+            }
+            Text {
+              visible: root.hotkeyStatus !== ""
+              width: parent.width; textFormat: Text.PlainText; wrapMode: Text.Wrap
+              text: root.hotkeyStatus
+              color: root.foreground; opacity: 0.7
+              font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall
+            }
+            Text {
+              width: parent.width; textFormat: Text.PlainText; wrapMode: Text.Wrap
+              text: "Hyprland の bind 記法 (例: CTRL SHIFT, K)。シェル起動時に自動で再適用します。hypr 設定ファイルは変更しません。"
+              color: root.foreground; opacity: 0.6
+              font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall
+            }
           }
         }
       }

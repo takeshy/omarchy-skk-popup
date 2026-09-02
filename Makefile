@@ -20,7 +20,7 @@ install-engine: build
 install-plugin:
 	mkdir -p $(PLUGIN_DIR)/scripts
 	cp manifest.json Panel.qml BarWidget.qml SkkButton.qml SkkModeBadge.qml README.md LICENSE $(PLUGIN_DIR)/
-	cp scripts/fetch-engine.sh $(PLUGIN_DIR)/scripts/
+	cp scripts/fetch-engine.sh scripts/setup.sh $(PLUGIN_DIR)/scripts/
 	-omarchy-shell shell rescanPlugins
 
 install: install-engine install-plugin

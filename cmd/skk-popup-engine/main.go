@@ -21,6 +21,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -209,6 +210,41 @@ type request struct {
 	Shift bool   `json:"shift"`
 	Alt   bool   `json:"alt"`
 	Pos   int    `json:"pos"`
+	Path  string `json:"path"` // addDict / removeDict
+}
+
+func expandUser(path string) string {
+	if strings.HasPrefix(path, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(home, path[2:])
+		}
+	}
+	return path
+}
+
+func parseStringList(raw string) []string {
+	var list []string
+	if json.Unmarshal([]byte(raw), &list) != nil {
+		return nil
+	}
+	out := list[:0]
+	for _, s := range list {
+		if strings.TrimSpace(s) != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+func marshalStringList(list []string) string {
+	if list == nil {
+		list = []string{}
+	}
+	data, err := json.Marshal(list)
+	if err != nil {
+		return "[]"
+	}
+	return string(data)
 }
 
 type storePersister struct{ s *store.Store }
@@ -238,26 +274,43 @@ func serve() error {
 		out.Flush()
 	}
 
-	dict := skk.NewDictionary()
-	var loaded []string
-	for _, path := range dictionaryFiles(cfg) {
-		if err := dict.LoadSystemFile(path); err != nil {
-			log.Printf("dictionary %s: %v", path, err)
-			emit(map[string]any{"type": "error", "message": fmt.Sprintf("dictionary %s: %v", filepath.Base(path), err)})
-			continue
-		}
-		loaded = append(loaded, path)
-	}
-	if len(loaded) == 0 {
-		log.Printf("no system dictionary found in %s (run: skk-popup-engine dict fetch)", dictionaryDir(cfg))
-		emit(map[string]any{"type": "error", "message": "No dictionary. Run: skk-popup-engine dict fetch"})
-	}
-
 	st, err := store.New()
 	if err != nil {
 		log.Printf("store: %v (user dictionary will not persist)", err)
 		st = nil
 	}
+
+	dict := skk.NewDictionary()
+	var loaded []string
+	loadDict := func(path string) bool {
+		if err := dict.LoadSystemFile(expandUser(path)); err != nil {
+			log.Printf("dictionary %s: %v", path, err)
+			emit(map[string]any{"type": "error", "message": fmt.Sprintf("dictionary %s: %v", filepath.Base(path), err)})
+			return false
+		}
+		loaded = append(loaded, path)
+		return true
+	}
+	for _, path := range dictionaryFiles(cfg) {
+		loadDict(path)
+	}
+	// Extra dictionaries added from the panel Settings.
+	var extraDicts []string
+	if st != nil {
+		extraDicts = parseStringList(st.Load(store.ExtraDictsFile, "[]"))
+	}
+	kept := extraDicts[:0]
+	for _, path := range extraDicts {
+		if loadDict(path) {
+			kept = append(kept, path)
+		}
+	}
+	extraDicts = kept
+	if len(loaded) == 0 {
+		log.Printf("no system dictionary found in %s (run: skk-popup-engine dict fetch)", dictionaryDir(cfg))
+		emit(map[string]any{"type": "error", "message": "No dictionary. Run: skk-popup-engine dict fetch"})
+	}
+
 	clip := &clipboard.Wayland{}
 	engine := skk.New(dict, clip, storePersister{st})
 	if st != nil {
@@ -272,11 +325,20 @@ func serve() error {
 		"version":      version,
 		"entries":      dict.SystemEntries(),
 		"dictionaries": loaded,
+		"extraDicts":   extraDicts,
 		"dataDir":      store.DataDir(),
 		"configPath":   config.Path(),
 		"enginePath":   exePath,
 	})
 	emit(stateMessage(engine.State()))
+
+	emitConfig := func() {
+		emit(map[string]any{
+			"type":       "config",
+			"entries":    dict.SystemEntries(),
+			"extraDicts": extraDicts,
+		})
+	}
 
 	pasteArmed := false
 	// The auto-paste shortcut fires a short delay after the popup hides, on
@@ -338,6 +400,45 @@ func serve() error {
 			engine.CancelRegister()
 		case "setCursor":
 			engine.SetCursor(req.Pos)
+		case "addDict":
+			path := strings.TrimSpace(req.Path)
+			if path == "" {
+				emit(map[string]any{"type": "error", "message": "追加辞書のパスが空です"})
+				continue
+			}
+			if slices.Contains(extraDicts, path) {
+				emitConfig()
+				continue
+			}
+			if !loadDict(path) {
+				continue // loadDict already emitted the error
+			}
+			// loadDict appended to `loaded`; keep the extra list too.
+			extraDicts = append(extraDicts, path)
+			if st != nil {
+				if err := st.Save(store.ExtraDictsFile, marshalStringList(extraDicts)); err != nil {
+					log.Printf("save %s: %v", store.ExtraDictsFile, err)
+				}
+			}
+			emitConfig()
+			continue
+		case "removeDict":
+			path := strings.TrimSpace(req.Path)
+			next := extraDicts[:0]
+			for _, existing := range extraDicts {
+				if existing != path {
+					next = append(next, existing)
+				}
+			}
+			extraDicts = next
+			if st != nil {
+				if err := st.Save(store.ExtraDictsFile, marshalStringList(extraDicts)); err != nil {
+					log.Printf("save %s: %v", store.ExtraDictsFile, err)
+				}
+			}
+			// Entries already merged in memory stay until the next start.
+			emitConfig()
+			continue
 		case "state":
 		case "quit":
 			if st != nil {
