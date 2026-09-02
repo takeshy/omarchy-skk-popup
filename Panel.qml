@@ -29,6 +29,8 @@ Item {
   property int engineRestarts: 0
   property string engineVersion: ""
   property string enginePath: ""
+  property bool menuOpen: false
+  readonly property string pluginVersion: (manifest && manifest.version) ? String(manifest.version) : ""
   // The engine binary was not found anywhere; offer to download it.
   property bool engineMissing: false
   property bool engineFetching: false
@@ -324,6 +326,13 @@ Item {
     }
   }
 
+  // "ヘルプ" opens the key-operation section of the README in a browser.
+  Process {
+    id: helpOpen
+    command: ["xdg-open", "https://github.com/takeshy/omarchy-skk-popup#キー操作"]
+    running: false
+  }
+
   // Remembers where the card was dragged, across restarts.
   FileView {
     id: cardPosFile
@@ -363,6 +372,42 @@ Item {
     function toggle(): string { root.shell ? root.shell.toggle(root.pluginId, "{}") : root.toggle(); return "ok" }
     function state(): string { return root.opened ? "open" : "closed" }
     function ping(): string { return "ok" }
+  }
+
+  // One row of the ⋮ menu.
+  component MenuRow: Rectangle {
+    id: menuRow
+    property string label: ""
+    signal activated()
+    width: parent ? parent.width : 0
+    height: menuRowText.implicitHeight + Style.spacing.sm * 2
+    radius: Math.max(2, Style.space(4))
+    color: menuRowMouse.containsMouse && menuRow.enabled ? Util.alpha(root.foreground, 0.12) : "transparent"
+    opacity: menuRow.enabled ? 1 : 0.4
+
+    Text {
+      id: menuRowText
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      anchors.leftMargin: Style.spacing.sm
+      anchors.rightMargin: Style.spacing.sm
+      textFormat: Text.PlainText
+      text: menuRow.label
+      color: root.foreground
+      font.family: root.fontFamily
+      font.pixelSize: Style.font.body
+      elide: Text.ElideRight
+    }
+
+    MouseArea {
+      id: menuRowMouse
+      anchors.fill: parent
+      hoverEnabled: true
+      enabled: menuRow.enabled
+      cursorShape: Qt.PointingHandCursor
+      onClicked: menuRow.activated()
+    }
   }
 
   // ---- surface ----
@@ -408,6 +453,11 @@ Item {
         focus: true
         Keys.priority: Keys.BeforeItem
         Keys.onPressed: function(event) {
+          if (root.menuOpen) {
+            if (event.key === Qt.Key_Escape) root.menuOpen = false
+            event.accepted = true
+            return
+          }
           var req = root.keyRequest(event)
           if (!req) return
           root.send(req)
@@ -430,7 +480,7 @@ Item {
         Item {
           id: header
           width: parent.width
-          height: Math.max(modeBadge.height, title.implicitHeight)
+          height: Math.max(menuButton.height, modeBadge.height, title.implicitHeight)
 
           HoverHandler { cursorShape: Qt.SizeAllCursor }
 
@@ -473,13 +523,25 @@ Item {
 
           SkkModeBadge {
             id: modeBadge
-            anchors.right: parent.right
+            anchors.right: menuButton.left
+            anchors.rightMargin: Style.spacing.sm
             anchors.verticalCenter: parent.verticalCenter
             label: root.modeLabel
             foreground: root.foreground
             accent: root.accent
             fontFamily: root.fontFamily
             onClicked: root.send({ op: "toggleMode" })
+          }
+
+          SkkButton {
+            id: menuButton
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            label: "⋮"
+            foreground: root.foreground
+            accent: root.accent
+            fontFamily: root.fontFamily
+            onClicked: root.menuOpen = !root.menuOpen
           }
         }
 
@@ -599,14 +661,6 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             spacing: root.gap
 
-            // Small update affordance, only when the running engine is the
-            // one this button can replace (see engineUpdatable).
-            SkkButton {
-              visible: root.engineUpdatable
-              label: "エンジン更新"
-              foreground: root.foreground; accent: root.accent; fontFamily: root.fontFamily
-              onClicked: root.fetchEngine()
-            }
             SkkButton { label: "Close"; foreground: root.foreground; accent: root.accent; fontFamily: root.fontFamily; onClicked: root.dismiss() }
             SkkButton {
               visible: root.engineMissing || root.engineFetching
@@ -621,6 +675,66 @@ Item {
               label: "Copy"; primary: true
               foreground: root.foreground; accent: root.accent; fontFamily: root.fontFamily
               onClicked: root.send({ op: "copy" })
+            }
+          }
+        }
+      }
+
+      // ⋮ menu: version line + recentre / help / engine update.
+      MouseArea {
+        anchors.fill: parent
+        visible: root.menuOpen
+        onClicked: root.menuOpen = false
+
+        BorderSurface {
+          anchors.top: parent.top
+          anchors.right: parent.right
+          anchors.topMargin: card.contentTopInset + Style.space(38)
+          anchors.rightMargin: card.contentRightInset
+          width: Math.min(Style.space(300), card.width - card.contentLeftInset - card.contentRightInset)
+          height: menuCol.implicitHeight + Style.spacing.md * 2
+          radius: root.cornerRadius
+          color: root.background
+          borderSpec: root.borderSpec
+
+          MouseArea { anchors.fill: parent; onClicked: function(mouse) { mouse.accepted = true } }
+
+          Column {
+            id: menuCol
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.margins: Style.spacing.md
+            spacing: Style.spacing.xs
+
+            Text {
+              width: parent.width
+              textFormat: Text.PlainText
+              text: "SKK Popup" + (root.pluginVersion ? " v" + root.pluginVersion : "")
+                + "  ・  engine " + (root.engineReady ? (root.engineVersion || "?")
+                : (root.engineFetching ? "取得中…" : "未取得"))
+              color: root.foreground
+              opacity: 0.7
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.bodySmall
+              elide: Text.ElideRight
+            }
+
+            MenuRow {
+              label: "パネルを中央に戻す"
+              onActivated: { root.recenterCard(); root.menuOpen = false }
+            }
+            MenuRow {
+              label: "ヘルプ (キー操作) を開く"
+              onActivated: { helpOpen.running = true; root.menuOpen = false }
+            }
+            MenuRow {
+              visible: root.engineReady || root.engineFetching
+              enabled: root.engineUpdatable
+              label: root.engineFetching
+                ? "エンジンを更新中…"
+                : (root.engineUpdatable ? "エンジンを更新" : "エンジンを更新 (手動版は対象外)")
+              onActivated: { root.fetchEngine(); root.menuOpen = false }
             }
           }
         }
