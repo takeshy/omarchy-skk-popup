@@ -58,9 +58,9 @@ make install-engine                                                            #
 
 - **エンジン・辞書**: 上記の取得 / 更新
 - **追加辞書**: 自分の SKK-JISYO / JSON ファイルのパスを追加・削除（エンジンが即ロード + `extra-dicts.json` に保存。`~/.local/share/skk-popup/dict/` に直接置いても可）
-- **ショートカット**: `CTRL SHIFT, K` のような Hyprland bind 記法を入れて「バインド」。`hyprctl` で即適用し、シェル起動時に自動で再適用します（**hypr 設定ファイルは変更しません**）
+- **ショートカット**: 既定で `CTRL SHIFT, K` が入力済み＆バインド済み（`hyprctl` で毎セッション自動適用、**hypr 設定ファイルは変更しません**）。変えたいときは別のキー（Hyprland bind 記法）を入れて「バインド」、使わないなら「解除」（`panel-settings.json` に `""` として残るので次回以降も無効）
 
-hypr 設定ファイルに恒久的に書きたい場合は従来どおり:
+自動バインドはシェルが起動している限り有効です。dotfiles に明示的に持ちたい／シェル非依存にしたい場合は、Settings で「解除」してから hypr 設定に直接書きます:
 
 ```ini
 # ~/.config/hypr/bindings.conf

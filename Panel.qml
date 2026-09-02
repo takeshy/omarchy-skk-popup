@@ -39,7 +39,9 @@ Item {
   property int dictEntries: 0
   property bool setupRunning: false
   property string setupStatus: ""
-  property string hotkey: ""       // persisted; re-bound each session
+  // Bound by default; re-applied every session. Cleared via Settings → 解除
+  // (persists as "" in panel-settings.json so it stays off).
+  property string hotkey: "CTRL SHIFT, K"
   property string hotkeyPrev: ""   // last spec we bound, to unbind on change
   property string hotkeyStatus: ""
   readonly property string setupScript: root.pluginDir + "/scripts/setup.sh"
@@ -298,7 +300,9 @@ Item {
   }
 
   // ---- Ctrl+Shift+K style hotkey: hyprctl only, re-applied every session.
-  function applyHotkey(spec) {
+  // quiet: the session-start re-apply — don't touch the status line or
+  // rewrite the settings file (a missing file just means "use the default").
+  function applyHotkey(spec, quiet) {
     spec = ("" + (spec || "")).replace(/^\s+|\s+$/g, "")
     var parts = []
     if (root.hotkeyPrev !== "" && root.hotkeyPrev !== spec)
@@ -312,8 +316,10 @@ Item {
     }
     root.hotkeyPrev = spec
     root.hotkey = spec
-    root.hotkeyStatus = spec === "" ? "解除しました" : "バインドしました: " + spec
-    panelSettingsFile.save()
+    if (!quiet) {
+      root.hotkeyStatus = spec === "" ? "解除しました" : "バインドしました: " + spec
+      panelSettingsFile.save()
+    }
   }
 
   function addDictPath(path) {
@@ -403,12 +409,13 @@ Item {
     onLoaded: {
       try {
         var j = JSON.parse(text())
-        if (j && typeof j.hotkey === "string") {
-          root.hotkey = j.hotkey
-          if (root.hotkey !== "") root.applyHotkey(root.hotkey)
-        }
+        // A stored string (including "") is the user's choice; keep it.
+        if (j && typeof j.hotkey === "string") root.hotkey = j.hotkey
       } catch (e) {}
+      if (root.hotkey !== "") root.applyHotkey(root.hotkey, true)
     }
+    // No file yet: bind the default.
+    onLoadFailed: { if (root.hotkey !== "") root.applyHotkey(root.hotkey, true) }
     function save() {
       setText(JSON.stringify({ hotkey: root.hotkey }) + "\n")
     }
