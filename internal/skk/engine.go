@@ -615,6 +615,22 @@ func (e *Engine) cancelCandidateSelection() bool {
 	return true
 }
 
+// foldOkuriIntoReading turns an okuri-ari preedit (▽わた*し) back into a plain
+// okuri-nasi reading (▽わたし). Returns false when there is no okuri split.
+func foldOkuriIntoReading(c *composer) bool {
+	if c.okuriKey == "" && !c.stickyOkuri {
+		return false
+	}
+	c.roman = ""
+	c.kana += c.okuriKana
+	c.okuriKey = ""
+	c.okuriKana = ""
+	c.stickyOkuri = false
+	c.invalidateCandidates()
+	c.showingCandidate = false
+	return true
+}
+
 // ---- main buffer: key handlers --------------------------------------------
 
 func (e *Engine) handlePrintable(k Key) bool {
@@ -1003,6 +1019,12 @@ func (e *Engine) handleMainKey(k Key) {
 			}
 			return
 		case "g":
+			// On an okuri-ari preedit (▽わた*し), Ctrl+G folds the okurigana
+			// back into the reading (▽わたし); otherwise it cancels candidate
+			// selection.
+			if c.composing && !c.showingCandidate && foldOkuriIntoReading(c) {
+				return
+			}
 			e.cancelCandidateSelection()
 			return
 		case "q":

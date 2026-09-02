@@ -259,6 +259,24 @@ func TestRegisterOkuriAri(t *testing.T) {
 	}
 }
 
+func TestCtrlGFoldsOkuri(t *testing.T) {
+	e, _, _ := newTestEngine(t)
+	typeKeys(e, "WataShi") // わた*し ; no わたs entry -> register modal
+	if s := e.State(); s.Text != "▽わた*し" || !s.Register.Open {
+		t.Fatalf("setup = %+v", s)
+	}
+	e.HandleKey(Key{Key: "g", Ctrl: true}) // Ctrl+G -> fold to okuri-nasi reading
+	s := e.State()
+	if s.Register.Open || s.Text != "▽わたし" || s.Mode != "SKK 変換" {
+		t.Fatalf("Ctrl+G should fold to ▽わたし: %+v", s)
+	}
+	e.dict.SetUserJSON(`{"わたし":["私"]}`)
+	press(e, " ")
+	if s = e.State(); s.Candidate != "私" {
+		t.Fatalf("folded reading should convert as one: %+v", s)
+	}
+}
+
 func TestRegisterDialogAutoOkuri(t *testing.T) {
 	e, _, _ := newTestEngine(t)
 	typeKeys(e, "HageRu") // no はげr entry -> register modal

@@ -377,6 +377,11 @@ func (e *Engine) handleRegisterKey(k Key) {
 			}
 			return
 		case "g":
+			// If the modal opened from an okuri-ari reading that has no
+			// entry, Ctrl+G bails all the way to an okuri-nasi reading.
+			if e.main.composing && len(e.main.candidates) == 0 {
+				foldOkuriIntoReading(&e.main)
+			}
 			e.closeRegisterModalSilently()
 			return
 		case "j":
