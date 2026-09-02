@@ -59,9 +59,40 @@ Item {
   readonly property int cardWidth: Math.min(Style.space(640), panel.width - Style.gapsOut * 2)
   readonly property int editorHeight: Style.space(132)
 
+  // ---- card position (drag the header to move; persisted) ----
+  // Mirrors store.DataDir(): $XDG_DATA_HOME/skk-popup or ~/.local/share/skk-popup.
+  readonly property string dataHome: {
+    var x = Quickshell.env("XDG_DATA_HOME")
+    return (x && x.length > 0 ? x : Quickshell.env("HOME") + "/.local/share") + "/skk-popup"
+  }
+  // NaN on an axis means "centre that axis". Dragging the header sets these.
+  property real cardX: NaN
+  property real cardY: NaN
+
+  function clampCardX(v) {
+    var m = Style.gapsOut
+    if (isNaN(v) || panel.width <= 0 || card.width <= 0) return Math.round((panel.width - card.width) / 2)
+    return Math.round(Math.max(m, Math.min(v, panel.width - card.width - m)))
+  }
+  function clampCardY(v) {
+    var m = Style.gapsOut
+    if (isNaN(v) || panel.height <= 0 || card.height <= 0) return Math.round((panel.height - card.height) / 2)
+    return Math.round(Math.max(m, Math.min(v, panel.height - card.height - m)))
+  }
+  function recenterCard() { root.cardX = NaN; root.cardY = NaN; cardPosFile.save() }
+  function persistCardPos() { cardPosFile.save() }
+
   // ---- lifecycle (shell contract: open/close/opened) ----
   function open(payloadJson) {
     root.opened = true
+    // Revive an engine that crashed past its restart budget, or start one
+    // that never came up. `shown` is (re)sent from the `ready` handler once
+    // the engine answers, so a cold first summon still captures the
+    // clipboard even though this send() lands before the process is up.
+    if (!engine.running) {
+      root.engineRestarts = 0
+      engine.running = true
+    }
     root.send({ op: "shown" })
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
@@ -135,6 +166,9 @@ Item {
       root.engineRestarts = 0
       if (!msg.dictionaries || msg.dictionaries.length === 0)
         root.statusText = "No dictionary. Run: skk-popup-engine dict fetch"
+      // The engine came up (or restarted) while the panel is already open:
+      // deliver the shown() the earlier send() could not.
+      if (root.opened) root.send({ op: "shown" })
       return
     }
     if (msg.type === "error") {
@@ -169,7 +203,7 @@ Item {
   }
 
   function ensureCursorVisible() {
-    var r = editor.cursorRectangle
+    var r = editor.positionToRectangle(editor.cursorPosition)
     if (r.y < editorFlick.contentY) editorFlick.contentY = Math.max(0, r.y)
     else if (r.y + r.height > editorFlick.contentY + editorFlick.height)
       editorFlick.contentY = Math.max(0, r.y + r.height - editorFlick.height)
@@ -210,9 +244,41 @@ Item {
     onTriggered: engine.running = true
   }
 
+  // Remembers where the card was dragged, across restarts.
+  FileView {
+    id: cardPosFile
+    path: root.dataHome + "/panel-position.json"
+    atomicWrites: true
+    printErrors: false
+    onLoaded: {
+      try {
+        var p = JSON.parse(text())
+        if (p && typeof p.x === "number") root.cardX = p.x
+        if (p && typeof p.y === "number") root.cardY = p.y
+      } catch (e) {}
+    }
+    function save() {
+      var out = {}
+      if (!isNaN(root.cardX)) out.x = Math.round(root.cardX)
+      if (!isNaN(root.cardY)) out.y = Math.round(root.cardY)
+      setText(JSON.stringify(out) + "\n")
+    }
+  }
+
   IpcHandler {
     target: "skk-popup"
-    function show(): string { if (!root.opened) root.shell && root.shell.summon(root.pluginId, "{}"); return "ok" }
+    // Re-summoning while open just refocuses the field (never hides): the
+    // hotkey is bound to `shell summon`, so pressing it again brings the
+    // keyboard back to the panel instead of closing it.
+    function show(): string {
+      if (!root.opened) {
+        if (root.shell && typeof root.shell.summon === "function") root.shell.summon(root.pluginId, "{}")
+        else root.open("{}")
+      } else {
+        keyCatcher.forceActiveFocus()
+      }
+      return "ok"
+    }
     function hide(): string { root.dismiss(); return "ok" }
     function toggle(): string { root.shell ? root.shell.toggle(root.pluginId, "{}") : root.toggle(); return "ok" }
     function state(): string { return root.opened ? "open" : "closed" }
@@ -246,7 +312,10 @@ Item {
       width: root.cardWidth
       height: content.implicitHeight + card.contentTopInset + card.contentBottomInset
       radius: root.cornerRadius
-      anchors.centerIn: parent
+      // Centred until the header is dragged; clampCard* keeps it on screen
+      // (and re-centres a NaN axis or a position left off a smaller output).
+      x: root.clampCardX(root.cardX)
+      y: root.clampCardY(root.cardY)
       color: root.background
       borderSpec: root.borderSpec
       padding: root.pad
@@ -277,9 +346,38 @@ Item {
         spacing: root.gap
 
         // Header: title + mode badge (click toggles かな / OFF).
+        // Drag it to move the card; right-click re-centres.
         Item {
+          id: header
           width: parent.width
           height: Math.max(modeBadge.height, title.implicitHeight)
+
+          HoverHandler { cursorShape: Qt.SizeAllCursor }
+
+          DragHandler {
+            target: null
+            dragThreshold: 4
+            property real baseX: 0
+            property real baseY: 0
+            onActiveChanged: {
+              if (active) {
+                baseX = card.x
+                baseY = card.y
+              } else {
+                root.persistCardPos()
+              }
+            }
+            onActiveTranslationChanged: {
+              if (!active) return
+              root.cardX = baseX + activeTranslation.x
+              root.cardY = baseY + activeTranslation.y
+            }
+          }
+
+          TapHandler {
+            acceptedButtons: Qt.RightButton
+            onTapped: root.recenterCard()
+          }
 
           Text {
             id: title
@@ -328,7 +426,6 @@ Item {
               id: editor
               width: editorFlick.width
               readOnly: true
-              cursorVisible: root.opened && !root.registerOpen
               selectByMouse: false
               wrapMode: TextEdit.Wrap
               textFormat: TextEdit.PlainText
@@ -343,6 +440,29 @@ Item {
                 onClicked: function(mouse) {
                   root.send({ op: "setCursor", pos: editor.positionAt(mouse.x, mouse.y) })
                   keyCatcher.forceActiveFocus()
+                }
+              }
+
+              // The engine owns the caret and this field never takes active
+              // focus, so TextEdit's built-in cursor never paints. Draw our
+              // own at positionToRectangle() — the comma list forces the
+              // binding to re-run whenever the text, caret offset or width
+              // changes.
+              Rectangle {
+                id: mainCaret
+                readonly property rect cr: (editor.text, editor.cursorPosition, editor.width,
+                  editor.positionToRectangle(editor.cursorPosition))
+                x: cr.x
+                y: cr.y
+                width: Math.max(2, Style.space(2))
+                height: cr.height > 0 ? cr.height : editor.font.pixelSize
+                color: root.accent
+                visible: root.opened && !root.registerOpen
+                Timer {
+                  running: mainCaret.visible
+                  repeat: true
+                  interval: 530
+                  onTriggered: mainCaret.opacity = mainCaret.opacity > 0 ? 0 : 1
                 }
               }
             }
@@ -473,7 +593,6 @@ Item {
               anchors.fill: parent
               anchors.margins: Style.spacing.lg
               readOnly: true
-              cursorVisible: root.registerOpen
               selectByMouse: false
               wrapMode: TextEdit.NoWrap
               textFormat: TextEdit.PlainText
@@ -481,6 +600,24 @@ Item {
               font.family: root.fontFamily
               font.pixelSize: Style.font.heading
               activeFocusOnPress: false
+
+              Rectangle {
+                id: regCaret
+                readonly property rect cr: (registerEditor.text, registerEditor.cursorPosition, registerEditor.width,
+                  registerEditor.positionToRectangle(registerEditor.cursorPosition))
+                x: cr.x
+                y: cr.y
+                width: Math.max(2, Style.space(2))
+                height: cr.height > 0 ? cr.height : registerEditor.font.pixelSize
+                color: root.accent
+                visible: root.registerOpen
+                Timer {
+                  running: regCaret.visible
+                  repeat: true
+                  interval: 530
+                  onTriggered: regCaret.opacity = regCaret.opacity > 0 ? 0 : 1
+                }
+              }
             }
           }
 

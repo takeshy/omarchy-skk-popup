@@ -15,6 +15,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -62,7 +63,23 @@ func NewAt(dir string) (*Store, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
+	removeStaleTemps(dir)
 	return &Store{dir: dir, files: map[string]*staged{}}, nil
+}
+
+// removeStaleTemps deletes writeAtomic scratch files a previous crash left
+// between CreateTemp and Rename. Best effort: errors are ignored.
+func removeStaleTemps(dir string) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if !entry.IsDir() && strings.HasPrefix(name, ".skk-popup-") && strings.HasSuffix(name, ".tmp") {
+			os.Remove(filepath.Join(dir, name))
+		}
+	}
 }
 
 func (s *Store) Dir() string { return s.dir }

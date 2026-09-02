@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/takeshy/omarchy-skk-popup/internal/clipboard"
@@ -276,6 +277,10 @@ func serve() error {
 	emit(stateMessage(engine.State()))
 
 	pasteArmed := false
+	// The auto-paste shortcut fires a short delay after the popup hides, on
+	// its own goroutine so the request loop stays responsive; pasteWG lets
+	// serve() wait for a paste in flight before it returns.
+	var pasteWG sync.WaitGroup
 	scanner := bufio.NewScanner(os.Stdin)
 	scanner.Buffer(make([]byte, 64*1024), 4*1024*1024)
 	for scanner.Scan() {
@@ -302,10 +307,18 @@ func serve() error {
 			}
 			if pasteArmed {
 				pasteArmed = false
-				time.Sleep(time.Duration(cfg.Clipboard.AutoPasteDelayMs) * time.Millisecond)
-				if err := clip.Paste(cfg.Clipboard.PasteKey); err != nil {
-					log.Printf("paste: %v", err)
-				}
+				delay := time.Duration(cfg.Clipboard.AutoPasteDelayMs) * time.Millisecond
+				key := cfg.Clipboard.PasteKey
+				pasteWG.Add(1)
+				go func() {
+					defer pasteWG.Done()
+					if delay > 0 {
+						time.Sleep(delay)
+					}
+					if err := clip.Paste(key); err != nil {
+						log.Printf("paste: %v", err)
+					}
+				}()
 			}
 		case "copy":
 			engine.Copy()
@@ -328,6 +341,7 @@ func serve() error {
 			if st != nil {
 				st.Flush()
 			}
+			pasteWG.Wait()
 			return nil
 		default:
 			emit(map[string]any{"type": "error", "message": "unknown op: " + req.Op})
@@ -342,14 +356,17 @@ func serve() error {
 	if st != nil {
 		st.Flush()
 	}
+	pasteWG.Wait()
 	return scanner.Err()
 }
 
-// stateMessage tags the render state for the wire.
-func stateMessage(s skk.State) map[string]any {
-	data, _ := json.Marshal(s)
-	var m map[string]any
-	json.Unmarshal(data, &m)
-	m["type"] = "state"
-	return m
+// stateEnvelope tags the render state for the wire. The embedded State's
+// fields marshal inline, so the payload is {"text":…,…,"type":"state"}.
+type stateEnvelope struct {
+	skk.State
+	Type string `json:"type"`
+}
+
+func stateMessage(s skk.State) stateEnvelope {
+	return stateEnvelope{State: s, Type: "state"}
 }

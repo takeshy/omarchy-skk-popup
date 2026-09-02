@@ -6,38 +6,24 @@ import (
 	"errors"
 	"os/exec"
 	"strings"
-	"sync"
 )
 
 // Wayland copies with wl-copy, reads with wl-paste, and pastes via wtype.
-type Wayland struct {
-	mu      sync.Mutex
-	lastCmd *exec.Cmd
-}
+type Wayland struct{}
 
 var ErrNoBackend = errors.New("wl-copy not found in PATH")
 
-// Copy places text on the clipboard. A previous wl-copy child is killed
-// first so repeated copies do not accumulate background processes;
-// wl-copy forks immediately and keeps serving the selection from the new
-// process.
+// Copy places text on the clipboard. wl-copy daemonises itself to keep
+// serving the selection, so Run returns once it has consumed our text and
+// forked: the clipboard is populated even if the caller exits immediately
+// afterwards (a plain Start would race that shutdown and lose the write).
 func (w *Wayland) Copy(text string) error {
-	w.mu.Lock()
-	defer w.mu.Unlock()
 	if _, err := exec.LookPath("wl-copy"); err != nil {
 		return ErrNoBackend
 	}
 	cmd := exec.Command("wl-copy")
 	cmd.Stdin = strings.NewReader(text)
-	if err := cmd.Start(); err != nil {
-		return err
-	}
-	go cmd.Wait()
-	if w.lastCmd != nil && w.lastCmd.Process != nil {
-		_ = w.lastCmd.Process.Kill()
-	}
-	w.lastCmd = cmd
-	return nil
+	return cmd.Run()
 }
 
 // Read returns the clipboard's plain text ("" when it holds none).

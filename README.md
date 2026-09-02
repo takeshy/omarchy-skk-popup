@@ -63,18 +63,26 @@ omarchy plugin add https://github.com/takeshy/omarchy-skk-popup.git --enable
 
 `omarchy plugin add` は git clone と manifest 検証しかしません (プラグインのコードを実行したり sudo を求めたりはしません)。エンジンは上の手順 1 で別途入れてください。
 
-### 4. Hyprland にキーを割り当てる
+`--enable` (および `omarchy plugin enable takeshy.skk-popup`) は、マニフェストに `bar-widget` があるため **バーの右セクションに「あ」ボタンを追加する形で有効化** します (パネル本体もそれで常駐します)。ボタンが不要なら、有効化後に `omarchy bar remove takeshy.skk-popup` でボタンだけ外せます (パネルは `shell.json` の `disabledPlugins` に入れない限り残ります)。
+
+### 4. ホットキーを割り当てる
 
 ```ini
 # ~/.config/hypr/bindings.conf
-bind = CTRL SHIFT, K, exec, omarchy-shell shell toggle takeshy.skk-popup '{}'
+bind = CTRL SHIFT, K, exec, omarchy-shell shell summon takeshy.skk-popup '{}'
 ```
 
-`omarchy-shell shell summon takeshy.skk-popup '{}'` / `omarchy-shell shell hide takeshy.skk-popup` も使えます。プラグイン側の IPC ターゲット `skk-popup` (`omarchy-shell skk-popup toggle` / `show` / `hide` / `state`) でも同じことができます。
+Lua 版の Hyprland 設定 (`~/.config/hypr/bindings.lua`) なら:
 
-### 5. (任意) バーに「あ」ボタンを置く
+```lua
+o.bind("CTRL + SHIFT + K", "SKK popup", "omarchy-shell shell summon takeshy.skk-popup '{}'")
+```
 
-_Setup > Plugins_ で SKK Popup を有効化すると、バーの右セクションに「あ」ボタンが追加されます。クリックでパネルをトグルします。位置は `omarchy bar move` で変更できます。
+`summon` にしておくと、パネル表示中にもう一度キーを押しても**閉じずに入力欄へフォーカスを戻します**。閉じるのは `Escape` / `Close` / パネル外クリック。トグル動作が良ければ `summon` を `toggle` に置き換えてください。`omarchy-shell shell hide takeshy.skk-popup` も使えます。プラグイン側の IPC ターゲット `skk-popup` (`omarchy-shell skk-popup show` / `hide` / `toggle` / `state`) でも同じことができます。
+
+### 5. (任意) バーの「あ」ボタン
+
+手順 3 で有効化した時点でバーの右セクションに「あ」ボタンが入っています。クリックでパネルをトグルします。位置は `omarchy bar move` で変更できます。
 
 ## 使い方
 
@@ -84,6 +92,8 @@ _Setup > Plugins_ で SKK Popup を有効化すると、バーの右セクショ
 4. パネルが閉じるとフォーカスは自動的に直前のウィンドウへ戻り、`auto_paste = true` なら貼り付けショートカットが送出されます
 
 エンジンは辞書をメモリに保持したまま omarchy-shell と一緒に常駐するため、2 回目以降の表示は即時です。`Escape` で閉じた場合の入力内容は次回まで保持されます。
+
+パネルはヘッダー (タイトル行) をドラッグして移動でき、位置は `panel-position.json` に保存されて次回以降も維持されます。ヘッダーを右クリックすると中央に戻ります。
 
 ## キー操作
 
@@ -152,6 +162,7 @@ paste_key = "ctrl+shift+v"
 | `userdict.json` | 単語登録したユーザー辞書 |
 | `history.json` | 候補の学習履歴 (読みごと最大 8 件) |
 | `input-history.json` | コピー履歴 (最大 30 件) |
+| `panel-position.json` | ドラッグしたパネル位置 (QML が読み書き。skk-popup とは非共有) |
 
 ## エンジンプロトコル
 
@@ -189,7 +200,9 @@ make validate   # manifest.json を omarchy plugin validate 相当でチェッ�
 make install    # ~/.local/bin にエンジン、~/.config/omarchy/plugins/takeshy.skk-popup にプラグインをコピー
 ```
 
-Omarchy 上では `omarchy plugin validate .` と `qmllint -I "$OMARCHY_PATH/shell" Panel.qml` で検証できます。`~/.config/omarchy/plugins/` 配下のファイルを保存すると omarchy-shell が自動で再読み込みします (`omarchy-shell shell rescanPlugins` で強制再読み込み)。プラグインが再読み込みされると旧エンジンプロセスは stdin の EOF で終了し、新しいものが起動します。
+Omarchy 上では `omarchy plugin validate .` と `qmllint -I "$OMARCHY_PATH/shell" Panel.qml` で検証できます。`~/.config/omarchy/plugins/` 配下のファイルを保存すると omarchy-shell がエンジンプロセスを再起動します (旧プロセスは stdin の EOF で終了)。
+
+**ただし `Panel.qml` などの QML 変更は `omarchy-shell shell rescanPlugins` では反映されません** — Quickshell がコンポーネントをキャッシュするため、`omarchy restart shell` (シェル完全再起動) が必要です。Go エンジンだけの変更なら `make install-engine` 後にパネルを開き直せば足ります。
 
 構成:
 

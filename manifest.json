@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "takeshy.skk-popup",
   "name": "SKK Popup",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "takeshy",
   "license": "MIT",
   "description": "Summon an SKK Japanese input panel from any app, then copy (and paste) the text.",

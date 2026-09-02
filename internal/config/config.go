@@ -126,7 +126,9 @@ func (c *Config) apply(section, key, value string) {
 	case "clipboard":
 		switch key {
 		case "auto_paste":
-			c.Clipboard.AutoPaste = value == "true"
+			if b, err := strconv.ParseBool(value); err == nil {
+				c.Clipboard.AutoPaste = b
+			}
 		case "auto_paste_delay_ms":
 			if n, err := strconv.Atoi(value); err == nil {
 				c.Clipboard.AutoPasteDelayMs = n
