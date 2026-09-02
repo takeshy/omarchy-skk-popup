@@ -1,4 +1,6 @@
-/bin/
+# Local dev build. The arch binaries bin/skk-popup-engine-linux-* are
+# vendored (committed) so the plugin ships a matching engine.
+/bin/skk-popup-engine
 /dist/
 *.log
 .task/

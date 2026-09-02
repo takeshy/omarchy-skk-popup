@@ -22,9 +22,9 @@ omarchy-shell ── Panel.qml (kind: panel, keepLoaded)
 
 - Omarchy Quattro 以降 (`omarchy-shell` が動いていること)
 - `wl-clipboard` (`wl-copy` / `wl-paste`)
-- `curl` または `wget` (エンジンの初回ダウンロードに使用)
 - 任意: `wtype` (確定後の自動貼り付けに使用)
-- エンジンを自分でビルドする場合のみ Go 1.25 以降
+- 任意: `curl` / `wget` (amd64・arm64 以外の arch でエンジンをフォールバック取得する場合のみ)
+- 任意: Go 1.25 以降 (エンジンを自分でビルドする場合のみ)
 
 ## インストール
 
@@ -34,29 +34,27 @@ omarchy-shell ── Panel.qml (kind: panel, keepLoaded)
 omarchy plugin add https://github.com/takeshy/omarchy-skk-popup.git --enable
 ```
 
-`omarchy plugin add` は git clone と manifest 検証しかしません (プラグインのコードを実行したり sudo を求めたりはしません)。
+`omarchy plugin add` は git clone と manifest 検証しかしません (プラグインのコードを実行したり sudo を求めたりはしません)。**エンジン (`skk-popup-engine`) は arch 別バイナリがリポジトリに同梱されている**ので、これで一緒に入ります (linux amd64 / arm64)。`omarchy plugin update` で QML と一緒に更新されます。
 
 `--enable` (および `omarchy plugin enable takeshy.skk-popup`) は、マニフェストに `bar-widget` があるため **バーの右セクションに「あ」ボタンを追加する形で有効化** します (パネル本体もそれで常駐します)。ボタンが不要なら、有効化後に `omarchy bar remove takeshy.skk-popup` でボタンだけ外せます (パネルは `shell.json` の `disabledPlugins` に入れない限り残ります)。
 
-### 2. エンジンと辞書を取得する
+### 2. 辞書を取得する
 
-バーの「あ」ボタンでパネルを出します。エンジン (`skk-popup-engine`) と辞書が未整備なら、フッターの **「エンジンと辞書を取得」ボタン** か **⋮ → 設定 → エンジン・辞書** から取得できます。`scripts/setup.sh` が動き、`skk-popup-engine` が無ければ [Releases](https://github.com/takeshy/omarchy-skk-popup/releases/latest) からこのマシンの arch のバイナリを `~/.local/share/skk-popup/bin/` にダウンロード → 続けて `dict fetch` で SKK-JISYO.L / geo / jinmei / propernoun / station を取得します。これがプラグインが `omarchy plugin add` 以外で行う唯一のネットワークアクセスで、ボタンを押したときだけです。同じボタンが以後は「更新」になります。
+バーの「あ」ボタンでパネルを出し、フッターの **「辞書を取得」ボタン** か **⋮ → 設定 → エンジン・辞書** から `dict fetch` を実行します (SKK-JISYO.L / geo / jinmei / propernoun / station、計 約9MB → `~/.local/share/skk-popup/dict/`)。辞書は同梱していないためここだけ 1 回必要です。ネットワークアクセスはこのボタンを押したときだけです。
 
-自分でビルドしたエンジンを使いたい場合は以下のいずれか（ダウンロード版より優先。`setup.sh` はそれを使って `dict fetch` するだけになります）:
+エンジンについて:
 
-```sh
-SKK_POPUP_ENGINE=/path/to/skk-popup-engine    # 環境変数で明示
-go install github.com/takeshy/omarchy-skk-popup/cmd/skk-popup-engine@latest   # → ~/go/bin
-make install-engine                                                            # → ~/.local/bin
-```
+- 同梱バイナリが既定で使われます (`<プラグインdir>/bin/skk-popup-engine-linux-<arch>`)。
+- **自分のビルドを使う** → `SKK_POPUP_ENGINE=/path/to/skk-popup-engine` (これだけが同梱版に優先)。`go install …/cmd/skk-popup-engine@latest` や `make install-engine` (→ `~/.local/bin`) は同梱版より**後**に探索されます。
+- **amd64 / arm64 以外** → 「辞書を取得」ボタン内蔵の `setup.sh` が Releases から取得を試み、無ければソースからビルドしてください。
 
-探索順: `$SKK_POPUP_ENGINE` → `<プラグインdir>/bin` → `~/.local/share/skk-popup/bin` → `~/.local/bin` → `~/go/bin` → `/usr/local/bin` → `/usr/bin` → `PATH`。辞書は `~/.local/share/skk-popup/dict/` に置かれます。
+探索順: `$SKK_POPUP_ENGINE` → `<プラグインdir>/bin/skk-popup-engine-linux-<arch>` → `<プラグインdir>/bin/skk-popup-engine` → `~/.local/share/skk-popup/bin` → `~/.local/bin` → `~/go/bin` → `/usr/local/bin` → `/usr/bin` → `PATH`。
 
 ### 3. (任意) ホットキーと設定
 
 **⋮ → 設定** で:
 
-- **エンジン・辞書**: 上記の取得 / 更新
+- **エンジン・辞書**: 辞書の取得 / 再取得 (エンジンは同梱。arch 未対応時のみ `setup.sh` がダウンロード)
 - **追加辞書**: 自分の SKK-JISYO / JSON ファイルのパスを追加・削除（エンジンが即ロード + `extra-dicts.json` に保存。`~/.local/share/skk-popup/dict/` に直接置いても可）
 - **ショートカット**: Hyprland 0.56 は実行時バインド (`hyprctl keyword`) を無効化しているため、**パネルからキーは割り当てできません**。キー（既定 `CTRL SHIFT, K`）を入れて「反映」すると、貼り付け用の設定行を生成します。「bind = 行をコピー」/「o.bind 行をコピー」でクリップボードへ入るので、下記いずれかに貼って `hyprctl reload`（または `omarchy restart shell`）
 
@@ -159,7 +157,7 @@ paste_key = "ctrl+shift+v"
 | ファイル | 内容 |
 |---|---|
 | `dict/` | システム辞書 (`dict fetch` の保存先) |
-| `bin/skk-popup-engine` | 「エンジンと辞書を取得」でダウンロードしたエンジン (skk-popup とは非共有) |
+| `bin/skk-popup-engine` | arch 未対応で `setup.sh` がダウンロードしたエンジン (通常は同梱版を使うので不在) |
 | `userdict.json` | 単語登録したユーザー辞書 |
 | `history.json` | 候補の学習履歴 (読みごと最大 8 件) |
 | `input-history.json` | コピー履歴 (最大 30 件) |
@@ -202,15 +200,17 @@ paste_key = "ctrl+shift+v"
 ## 開発
 
 ```sh
-make build      # bin/skk-popup-engine
-make test       # go vet + go test
-make validate   # manifest.json を omarchy plugin validate 相当でチェック (jq が必要)
-make install    # ~/.local/bin にエンジン、~/.config/omarchy/plugins/takeshy.skk-popup にプラグインをコピー
+make vendor-engine   # bin/skk-popup-engine-linux-{amd64,arm64} (同梱バイナリ。Go を触ったら再生成してコミット)
+make test            # go vet + go test
+make validate        # manifest.json を omarchy plugin validate 相当でチェック (jq が必要)
+make install         # vendor-engine + プラグイン一式を ~/.config/omarchy/plugins/takeshy.skk-popup へコピー
 ```
+
+同梱バイナリの版数は `manifest.json` の `version` を埋め込みます。**Go を変更したら `make vendor-engine`（または `make install`）で再ビルドしてコミット**してください。CI が古い場合に警告します。
 
 Omarchy 上では `omarchy plugin validate .` と `qmllint -I "$OMARCHY_PATH/shell" Panel.qml` で検証できます。`~/.config/omarchy/plugins/` 配下のファイルを保存すると omarchy-shell がエンジンプロセスを再起動します (旧プロセスは stdin の EOF で終了)。
 
-**ただし `Panel.qml` などの QML 変更は `omarchy-shell shell rescanPlugins` では反映されません** — Quickshell がコンポーネントをキャッシュするため、`omarchy restart shell` (シェル完全再起動) が必要です。Go エンジンだけの変更なら `make install-engine` 後にパネルを開き直せば足ります。
+**ただし `Panel.qml` などの QML 変更は `omarchy-shell shell rescanPlugins` では反映されません** — Quickshell がコンポーネントをキャッシュするため、`omarchy restart shell` (シェル完全再起動) が必要です。Go エンジンだけの変更なら `make install`（同梱バイナリを更新 → プラグイン再スキャンでエンジン再起動）で足ります。
 
 構成:
 
@@ -219,8 +219,9 @@ manifest.json              Omarchy plugin manifest (kinds: panel, bar-widget / k
 Panel.qml                  入力パネル (エンジンの起動・キー送信・状態の描画)
 BarWidget.qml              バーの「あ」ボタン
 SkkButton.qml, SkkModeBadge.qml   パネル内の小さな部品
-scripts/fetch-engine.sh    Releases から arch 別エンジンバイナリを DL
-scripts/setup.sh           fetch-engine.sh + dict fetch (設定の「エンジンと辞書を取得」)
+bin/skk-popup-engine-linux-*   同梱エンジン (make vendor-engine で生成・コミット)
+scripts/fetch-engine.sh    Releases から arch 別エンジンバイナリを DL (arch 未対応時のフォールバック)
+scripts/setup.sh           fetch-engine.sh（必要時）+ dict fetch (設定の「辞書を取得」)
 cmd/skk-popup-engine/      CLI (serve / dict fetch / dict list / version)
 internal/skk/              SKK エンジン (ローマ字変換、状態機械、単語登録、辞書)
 internal/store/            userdict / history / input-history / extra-dicts の永続化

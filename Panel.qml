@@ -299,11 +299,12 @@ Item {
       editorFlick.contentY = Math.max(0, r.y + r.height - editorFlick.height)
   }
 
-  // The engine binary, in priority order: $SKK_POPUP_ENGINE, a copy vendored
-  // in <plugin dir>/bin, the one fetch-engine.sh downloads into the data
-  // dir, the usual manual install locations, then PATH. Exits 127 when
-  // nothing is exec'able — that is what flips engineMissing on.
-  readonly property string engineBootstrap: 'D="${XDG_DATA_HOME:-$HOME/.local/share}/skk-popup/bin/skk-popup-engine"; for p in "$SKK_POPUP_ENGINE" "$1/bin/skk-popup-engine" "$D" "$HOME/.local/bin/skk-popup-engine" "$HOME/go/bin/skk-popup-engine" /usr/local/bin/skk-popup-engine /usr/bin/skk-popup-engine; do [ -n "$p" ] && [ -x "$p" ] && exec "$p" serve; done; exec skk-popup-engine serve'
+  // The engine binary, in priority order: $SKK_POPUP_ENGINE, the arch-matched
+  // copy vendored in <plugin dir>/bin (ships with the plugin, always matches
+  // this QML), the one fetch-engine.sh downloads into the data dir, then the
+  // manual install locations and PATH. Exits 127 when nothing is exec'able —
+  // that is what flips engineMissing on.
+  readonly property string engineBootstrap: 'A=$(uname -m); case "$A" in x86_64|amd64) A=amd64;; aarch64|arm64) A=arm64;; *) A=unknown;; esac; D="${XDG_DATA_HOME:-$HOME/.local/share}/skk-popup/bin/skk-popup-engine"; for p in "$SKK_POPUP_ENGINE" "$1/bin/skk-popup-engine-linux-$A" "$1/bin/skk-popup-engine" "$D" "$HOME/.local/bin/skk-popup-engine" "$HOME/go/bin/skk-popup-engine" /usr/local/bin/skk-popup-engine /usr/bin/skk-popup-engine; do [ -n "$p" ] && [ -x "$p" ] && exec "$p" serve; done; exec skk-popup-engine serve'
 
   // setup.sh: download the engine if missing, then `dict fetch`.
   function runSetup() {
@@ -789,15 +790,15 @@ Item {
 
             SkkButton { label: "Close"; foreground: root.foreground; accent: root.accent; fontFamily: root.fontFamily; onClicked: root.dismiss() }
             SkkButton {
-              visible: root.engineMissing || root.setupRunning
-              label: root.setupRunning ? "準備中…" : "エンジンと辞書を取得"
+              visible: root.engineMissing || root.dictEntries === 0 || root.setupRunning
+              label: root.setupRunning ? "取得中…" : (root.engineMissing ? "エンジンと辞書を取得" : "辞書を取得")
               primary: true
               opacity: root.setupRunning ? 0.6 : 1
               foreground: root.foreground; accent: root.accent; fontFamily: root.fontFamily
               onClicked: root.runSetup()
             }
             SkkButton {
-              visible: !root.engineMissing && !root.setupRunning
+              visible: !root.engineMissing && root.dictEntries > 0 && !root.setupRunning
               label: "Copy"; primary: true
               foreground: root.foreground; accent: root.accent; fontFamily: root.fontFamily
               onClicked: root.send({ op: "copy" })
@@ -981,15 +982,16 @@ Item {
             }
             Text {
               width: parent.width; textFormat: Text.PlainText; wrapMode: Text.Wrap
-              text: (root.engineReady ? "エンジン v" + (root.engineVersion || "?") : "エンジン: 未取得")
+              text: (root.engineReady ? "エンジン v" + (root.engineVersion || "?") + " (同梱)" : "エンジン: 未検出")
                 + "   /   " + (root.dictEntries > 0 ? "辞書 " + root.dictEntries + " 語" : "辞書: 未取得")
               color: root.foreground; opacity: 0.75
               font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall
             }
             SkkButton {
-              label: root.setupRunning ? "準備中…"
-                : ((root.engineReady && root.dictEntries > 0) ? "エンジンと辞書を更新" : "エンジンと辞書を取得")
-              primary: !root.engineReady || root.dictEntries === 0
+              label: root.setupRunning ? "取得中…"
+                : (root.engineMissing ? "エンジンと辞書を取得"
+                : (root.dictEntries > 0 ? "辞書を再取得" : "辞書を取得"))
+              primary: root.engineMissing || root.dictEntries === 0
               opacity: root.setupRunning ? 0.6 : 1
               foreground: root.foreground; accent: root.accent; fontFamily: root.fontFamily
               onClicked: root.runSetup()

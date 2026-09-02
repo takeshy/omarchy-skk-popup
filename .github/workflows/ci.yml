@@ -16,3 +16,12 @@ jobs:
           cache: true
       - run: go vet ./... && go test ./...
       - run: ./scripts/validate-manifest.sh .
+      # The plugin ships bin/skk-popup-engine-linux-*; make sure they rebuild
+      # from the current source for every target arch, and flag it when the
+      # committed copies are stale.
+      - run: make vendor-engine
+      - run: |
+          if ! git diff --quiet -- bin/; then
+            echo "::warning::vendored engine binaries differ from a fresh build — run 'make vendor-engine' and commit"
+            git diff --stat -- bin/
+          fi
