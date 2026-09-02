@@ -98,6 +98,7 @@ Item {
   property string statusText: "Starting skk-popup-engine…"
   property bool registerOpen: false
   property string registerReading: ""
+  property string registerOkuri: ""
   property string registerText: ""
   property int registerCursor: 0
   property string registerMode: "SKK かな"
@@ -263,6 +264,7 @@ Item {
     var reg = msg.register || {}
     root.registerOpen = reg.open === true
     root.registerReading = reg.reading || ""
+    root.registerOkuri = reg.okuri || ""
     root.registerText = reg.text || ""
     root.registerCursor = reg.cursor || 0
     root.regSelStart = (typeof reg.selStart === "number") ? reg.selStart : root.registerCursor
@@ -1162,7 +1164,9 @@ Item {
               anchors.rightMargin: root.gap
               anchors.verticalCenter: parent.verticalCenter
               textFormat: Text.PlainText
-              text: root.registerReading + " に登録する単語を入力してください。"
+              text: root.registerOkuri !== ""
+                ? "「" + root.registerReading + "」の漢字部分を入力 (送り仮名「" + root.registerOkuri + "」は自動で付きます)"
+                : root.registerReading + " に登録する単語を入力してください。"
               color: root.foreground
               font.family: root.fontFamily
               font.pixelSize: Style.font.body
@@ -1220,6 +1224,20 @@ Item {
                   onTriggered: regCaret.opacity = regCaret.opacity > 0 ? 0 : 1
                 }
               }
+            }
+
+            // Ghost okurigana appended after the stem being registered.
+            Text {
+              visible: root.registerOkuri !== ""
+              anchors.left: parent.left
+              anchors.leftMargin: Style.spacing.lg + registerEditor.contentWidth + Style.space(2)
+              anchors.verticalCenter: parent.verticalCenter
+              textFormat: Text.PlainText
+              text: root.registerOkuri
+              color: root.foreground
+              opacity: 0.4
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.heading
             }
           }
 

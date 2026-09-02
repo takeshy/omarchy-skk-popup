@@ -233,6 +233,32 @@ func TestRegisterFlow(t *testing.T) {
 	}
 }
 
+func TestRegisterOkuriAri(t *testing.T) {
+	e, _, p := newTestEngine(t)
+	typeKeys(e, "HageRu") // はげ + okuri る ; no okuri-ari entry -> register modal
+	s := e.State()
+	if !s.Register.Open || s.Register.Reading != "はげ*る" || s.Register.Okuri != "る" {
+		t.Fatalf("okuri register state = %+v", s.Register)
+	}
+	// The user enters only the kanji stem (ascii placeholder here).
+	typeKeys(e, "l")
+	typeKeys(e, "Z")
+	press(e, "Enter") // save
+	if got := e.Text(); got != "Zる" {
+		t.Fatalf("okuri register commit = %q (want stem + okurigana)", got)
+	}
+	if !strings.Contains(p.user, `"はげr":["Z"]`) {
+		t.Fatalf("okuri-ari should be stored under the bare stem: %s", p.user)
+	}
+	// Converting the reading again now auto-converts (no register modal).
+	press(e, "Backspace")
+	press(e, "Backspace")
+	typeKeys(e, "HageRu")
+	if s = e.State(); s.Register.Open || s.Candidate != "Zる" || s.Text != "Zる" {
+		t.Fatalf("re-convert okuri-ari = %+v", s)
+	}
+}
+
 func TestCopyAndClose(t *testing.T) {
 	e, clip, p := newTestEngine(t)
 	typeKeys(e, "Nihongo ")

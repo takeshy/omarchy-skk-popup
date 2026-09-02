@@ -53,7 +53,9 @@ type Engine struct {
 	reg  composer
 
 	registerOpen  bool
-	registerKey   string
+	registerKey   string // dictionary key, e.g. "おくr" for okuri-ari
+	registerRead  string // friendly reading shown to the user, e.g. "おく*る"
+	registerOkuri string // okurigana appended after the registered stem ("" = okuri-nasi)
 	registerError string
 
 	status string

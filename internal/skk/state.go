@@ -28,6 +28,7 @@ type State struct {
 type RegisterState struct {
 	Open      bool   `json:"open"`
 	Reading   string `json:"reading"`
+	Okuri     string `json:"okuri"` // okurigana auto-appended after the stem
 	Text      string `json:"text"`
 	Cursor    int    `json:"cursor"`
 	SelStart  int    `json:"selStart"`
@@ -113,7 +114,8 @@ func (e *Engine) registerState() RegisterState {
 	rcursor := r.cursor + len(preedit)
 	rs := RegisterState{
 		Open:     true,
-		Reading:  e.registerKey,
+		Reading:  e.registerRead,
+		Okuri:    e.registerOkuri,
 		Text:     string(display),
 		Cursor:   rcursor,
 		SelStart: rcursor,

@@ -13,6 +13,13 @@ func (e *Engine) openRegisterModal() {
 		return
 	}
 	e.registerKey = key
+	e.registerRead = key
+	e.registerOkuri = ""
+	if c.okuriKey != "" {
+		// Register only the kanji stem; the engine re-appends the okurigana.
+		e.registerRead = c.kana + okuriMarker + c.okuriKana
+		e.registerOkuri = c.okuriKana
+	}
 	e.reg = composer{selAnchor: -1, goalCol: -1}
 	e.registerError = ""
 	e.registerOpen = true
@@ -24,6 +31,8 @@ func (e *Engine) closeRegisterModalSilently() {
 	e.registerError = ""
 	e.reg.resetComposition()
 	e.registerKey = ""
+	e.registerRead = ""
+	e.registerOkuri = ""
 }
 
 // CancelRegister closes the dialog without saving (Escape / Ctrl+G / 閉じる).

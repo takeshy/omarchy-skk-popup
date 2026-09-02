@@ -36,7 +36,8 @@ install-plugin: vendor-engine
 	mkdir -p $(PLUGIN_DIR)/scripts $(PLUGIN_DIR)/bin
 	cp manifest.json Panel.qml BarWidget.qml SkkButton.qml SkkModeBadge.qml README.md LICENSE $(PLUGIN_DIR)/
 	cp scripts/fetch-engine.sh scripts/setup.sh $(PLUGIN_DIR)/scripts/
-	cp bin/$(BIN)-linux-* $(PLUGIN_DIR)/bin/
+	# install (unlink + create) so a running engine's binary can be replaced.
+	for f in bin/$(BIN)-linux-*; do install -m755 "$$f" "$(PLUGIN_DIR)/bin/$$(basename $$f)"; done
 	-omarchy-shell shell rescanPlugins
 
 install: install-plugin

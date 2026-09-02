@@ -100,6 +100,7 @@ o.bind("CTRL + SHIFT + K", "SKK popup", "omarchy-shell shell summon takeshy.skk-
 - 辞書注釈がある場合は `候補 ※注釈` の形で表示 (注釈は確定文字列に含まれない)
 - 最後に確定した候補は、同じ読みの次回変換で優先表示
 - 候補がない `Space` / 最終候補の次の `Space`: 単語登録ダイアログを開く
+- 送り仮名あり (`▽かん*じ`) の登録では**漢字部分だけ**を入力する (送り仮名は自動で付く。ダイアログにゴースト表示)
 - 登録ダイアログ内でもローマ字かな入力・候補変換・`q` / `Ctrl+Q` / `l` / `L` / `Ctrl+J` が使える
 - 候補表示中の `x`: 前候補へ / 先頭で `x`: かな表示へ戻る
 - 候補表示中の `X`: 表示中の候補をユーザー辞書・学習履歴から削除
@@ -189,7 +190,7 @@ paste_key = "ctrl+shift+v"
 {"type":"state","text":"▽にほんご","cursor":5,"selStart":5,"selEnd":5,"mode":"SKK 変換",
  "candidate":"","candidateActive":false,
  "status":"Space: convert / Enter: copy / Ctrl+O: select all",
- "register":{"open":false,"reading":"","text":"","cursor":0,"selStart":0,"selEnd":0,"mode":"","candidate":"","error":""},
+ "register":{"open":false,"reading":"","okuri":"","text":"","cursor":0,"selStart":0,"selEnd":0,"mode":"","candidate":"","error":""},
  "close":false,"copied":false}
 {"type":"config","entries":123456,"extraDicts":["…"]}   // addDict / removeDict の後
 {"type":"error","message":"…"}
