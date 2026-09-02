@@ -27,6 +27,10 @@ Item {
   // ---- engine render state ----
   property bool engineReady: false
   property int engineRestarts: 0
+  // The engine binary was not found anywhere; offer to download it.
+  property bool engineMissing: false
+  property bool engineFetching: false
+  property string engineFetchError: ""
   property string bufferText: ""
   property int bufferCursor: 0
   property string modeLabel: "SKK かな"
@@ -209,9 +213,22 @@ Item {
       editorFlick.contentY = Math.max(0, r.y + r.height - editorFlick.height)
   }
 
-  // The engine binary: $SKK_POPUP_ENGINE, then <plugin dir>/bin, then the
-  // usual user install locations, then PATH.
-  readonly property string engineBootstrap: 'for p in "$SKK_POPUP_ENGINE" "$1/bin/skk-popup-engine" "$HOME/.local/bin/skk-popup-engine" "$HOME/go/bin/skk-popup-engine" /usr/local/bin/skk-popup-engine /usr/bin/skk-popup-engine; do [ -n "$p" ] && [ -x "$p" ] && exec "$p" serve; done; exec skk-popup-engine serve'
+  // The engine binary, in priority order: $SKK_POPUP_ENGINE, a copy vendored
+  // in <plugin dir>/bin, the one fetch-engine.sh downloads into the data
+  // dir, the usual manual install locations, then PATH. Exits 127 when
+  // nothing is exec'able — that is what flips engineMissing on.
+  readonly property string engineBootstrap: 'D="${XDG_DATA_HOME:-$HOME/.local/share}/skk-popup/bin/skk-popup-engine"; for p in "$SKK_POPUP_ENGINE" "$1/bin/skk-popup-engine" "$D" "$HOME/.local/bin/skk-popup-engine" "$HOME/go/bin/skk-popup-engine" /usr/local/bin/skk-popup-engine /usr/bin/skk-popup-engine; do [ -n "$p" ] && [ -x "$p" ] && exec "$p" serve; done; exec skk-popup-engine serve'
+
+  // Downloads the prebuilt engine for this architecture into the data dir.
+  readonly property string engineFetchScript: root.pluginDir + "/scripts/fetch-engine.sh"
+
+  function fetchEngine() {
+    if (root.engineFetching) return
+    root.engineFetching = true
+    root.engineFetchError = ""
+    root.statusText = "skk-popup-engine をダウンロード中…"
+    engineFetch.running = true
+  }
 
   // The shell injects `manifest` right after the item is created; wait for
   // that before starting so `<plugin dir>/bin` is on the lookup list.
@@ -230,7 +247,13 @@ Item {
     }
     onExited: function(exitCode, exitStatus) {
       root.engineReady = false
-      root.statusText = "Engine exited (" + exitCode + "). Install skk-popup-engine and reopen."
+      if (exitCode === 127) {
+        // Nothing on the lookup path was exec'able.
+        root.engineMissing = true
+        root.statusText = "skk-popup-engine が見つかりません。取得してください。"
+        return
+      }
+      root.statusText = "Engine exited (" + exitCode + ")."
       if (root.engineRestarts < 5) {
         root.engineRestarts += 1
         restartTimer.restart()
@@ -242,6 +265,30 @@ Item {
     id: restartTimer
     interval: 2000
     onTriggered: engine.running = true
+  }
+
+  Process {
+    id: engineFetch
+    command: ["sh", root.engineFetchScript]
+    running: false
+    stdout: SplitParser { onRead: function(data) { console.warn("fetch-engine:", data) } }
+    stderr: SplitParser {
+      onRead: function(data) { console.warn("fetch-engine:", data); root.engineFetchError = data }
+    }
+    onExited: function(exitCode, exitStatus) {
+      root.engineFetching = false
+      if (exitCode === 0) {
+        root.engineMissing = false
+        root.engineFetchError = ""
+        root.engineRestarts = 0
+        root.statusText = "skk-popup-engine を取得しました。起動中…"
+        engine.running = true
+      } else {
+        root.statusText = root.engineFetchError !== ""
+          ? "取得失敗: " + root.engineFetchError
+          : "skk-popup-engine の取得に失敗しました (" + exitCode + ")"
+      }
+    }
   }
 
   // Remembers where the card was dragged, across restarts.
@@ -520,7 +567,20 @@ Item {
             spacing: root.gap
 
             SkkButton { label: "Close"; foreground: root.foreground; accent: root.accent; fontFamily: root.fontFamily; onClicked: root.dismiss() }
-            SkkButton { label: "Copy"; primary: true; foreground: root.foreground; accent: root.accent; fontFamily: root.fontFamily; onClicked: root.send({ op: "copy" }) }
+            SkkButton {
+              visible: root.engineMissing || root.engineFetching
+              label: root.engineFetching ? "取得中…" : "エンジンを取得"
+              primary: true
+              opacity: root.engineFetching ? 0.6 : 1
+              foreground: root.foreground; accent: root.accent; fontFamily: root.fontFamily
+              onClicked: root.fetchEngine()
+            }
+            SkkButton {
+              visible: !root.engineMissing && !root.engineFetching
+              label: "Copy"; primary: true
+              foreground: root.foreground; accent: root.accent; fontFamily: root.fontFamily
+              onClicked: root.send({ op: "copy" })
+            }
           }
         }
       }

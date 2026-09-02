@@ -18,8 +18,9 @@ install-engine: build
 # Symlink-free copy of the plugin into the Omarchy plugins dir for hacking
 # (omarchy plugin add <git url> is the normal install path).
 install-plugin:
-	mkdir -p $(PLUGIN_DIR)
+	mkdir -p $(PLUGIN_DIR)/scripts
 	cp manifest.json Panel.qml BarWidget.qml SkkButton.qml SkkModeBadge.qml README.md LICENSE $(PLUGIN_DIR)/
+	cp scripts/fetch-engine.sh $(PLUGIN_DIR)/scripts/
 	-omarchy-shell shell rescanPlugins
 
 install: install-engine install-plugin

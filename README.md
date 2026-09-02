@@ -6,7 +6,7 @@
 
 ```text
 Ctrl+Shift+K (Hyprland bind)
-      │  omarchy-shell shell toggle takeshy.skk-popup '{}'
+      │  omarchy-shell shell summon takeshy.skk-popup '{}'
       ▼
 omarchy-shell ── Panel.qml (kind: panel, keepLoaded)
                     │ stdin : {"op":"key","key":"a"} …   (JSON lines)
@@ -22,50 +22,45 @@ omarchy-shell ── Panel.qml (kind: panel, keepLoaded)
 
 - Omarchy Quattro 以降 (`omarchy-shell` が動いていること)
 - `wl-clipboard` (`wl-copy` / `wl-paste`)
+- `curl` または `wget` (エンジンの初回ダウンロードに使用)
 - 任意: `wtype` (確定後の自動貼り付けに使用)
-- エンジンのビルドに Go 1.25 以降 (Releases のバイナリを使う場合は不要)
+- エンジンを自分でビルドする場合のみ Go 1.25 以降
 
 ## インストール
 
-### 1. エンジン (`skk-popup-engine`) を入れる
-
-Releases からダウンロードする場合:
-
-```sh
-install -Dm755 skk-popup-engine-linux-amd64 ~/.local/bin/skk-popup-engine
-```
-
-ソースから入れる場合:
-
-```sh
-go install github.com/takeshy/omarchy-skk-popup/cmd/skk-popup-engine@latest   # → ~/go/bin
-# または
-git clone https://github.com/takeshy/omarchy-skk-popup.git && cd omarchy-skk-popup
-make install-engine                                                            # → ~/.local/bin
-```
-
-Panel.qml は `$SKK_POPUP_ENGINE` → `<プラグインdir>/bin/skk-popup-engine` → `~/.local/bin` → `~/go/bin` → `/usr/local/bin` → `/usr/bin` → `PATH` の順にエンジンを探します。
-
-### 2. 辞書をダウンロードする
-
-```sh
-skk-popup-engine dict fetch      # SKK-JISYO.L / geo / jinmei / propernoun / station
-skk-popup-engine dict list       # 読み込まれる辞書ファイルを確認
-```
-
-辞書は `~/.local/share/skk-popup/dict/` に置かれます。既存の SKK-JISYO ファイル (EUC-JP / UTF-8) や skk-popup の `dictionary.json` をこのディレクトリに置いても読み込まれます。
-
-### 3. プラグインを追加する
+### 1. プラグインを追加する
 
 ```sh
 omarchy plugin add https://github.com/takeshy/omarchy-skk-popup.git --enable
 ```
 
-`omarchy plugin add` は git clone と manifest 検証しかしません (プラグインのコードを実行したり sudo を求めたりはしません)。エンジンは上の手順 1 で別途入れてください。
+`omarchy plugin add` は git clone と manifest 検証しかしません (プラグインのコードを実行したり sudo を求めたりはしません)。
 
 `--enable` (および `omarchy plugin enable takeshy.skk-popup`) は、マニフェストに `bar-widget` があるため **バーの右セクションに「あ」ボタンを追加する形で有効化** します (パネル本体もそれで常駐します)。ボタンが不要なら、有効化後に `omarchy bar remove takeshy.skk-popup` でボタンだけ外せます (パネルは `shell.json` の `disabledPlugins` に入れない限り残ります)。
 
-### 4. ホットキーを割り当てる
+### 2. エンジンと辞書を用意する
+
+パネルを初めて出すと、エンジン (`skk-popup-engine`) が未インストールなら **「エンジンを取得」ボタン**が出ます。押すと [Releases](https://github.com/takeshy/omarchy-skk-popup/releases/latest) からこのマシンの arch のバイナリを `~/.local/share/skk-popup/bin/skk-popup-engine` にダウンロードします (プラグインが `omarchy plugin add` 以外で行う唯一のネットワークアクセス。ボタンを押したときだけ)。押し直せば最新版に更新できます。
+
+自分でビルドしたものを使いたい場合は、以下のいずれか。ダウンロード版より優先されます:
+
+```sh
+SKK_POPUP_ENGINE=/path/to/skk-popup-engine    # 環境変数で明示
+go install github.com/takeshy/omarchy-skk-popup/cmd/skk-popup-engine@latest   # → ~/go/bin
+make install-engine                                                            # → ~/.local/bin
+```
+
+探索順: `$SKK_POPUP_ENGINE` → `<プラグインdir>/bin` → `~/.local/share/skk-popup/bin` (ボタン) → `~/.local/bin` → `~/go/bin` → `/usr/local/bin` → `/usr/bin` → `PATH`。
+
+辞書はエンジン導入後に一度:
+
+```sh
+~/.local/share/skk-popup/bin/skk-popup-engine dict fetch   # SKK-JISYO.L / geo / jinmei / propernoun / station
+```
+
+(`~/.local/bin` などに入れた場合は `skk-popup-engine dict fetch`)。辞書は `~/.local/share/skk-popup/dict/` に置かれます。既存の SKK-JISYO ファイル (EUC-JP / UTF-8) や skk-popup の `dictionary.json` をこのディレクトリに置いても読み込まれます。
+
+### 3. ホットキーを割り当てる
 
 ```ini
 # ~/.config/hypr/bindings.conf
@@ -80,9 +75,9 @@ o.bind("CTRL + SHIFT + K", "SKK popup", "omarchy-shell shell summon takeshy.skk-
 
 `summon` にしておくと、パネル表示中にもう一度キーを押しても**閉じずに入力欄へフォーカスを戻します**。閉じるのは `Escape` / `Close` / パネル外クリック。トグル動作が良ければ `summon` を `toggle` に置き換えてください。`omarchy-shell shell hide takeshy.skk-popup` も使えます。プラグイン側の IPC ターゲット `skk-popup` (`omarchy-shell skk-popup show` / `hide` / `toggle` / `state`) でも同じことができます。
 
-### 5. (任意) バーの「あ」ボタン
+### 4. (任意) バーの「あ」ボタン
 
-手順 3 で有効化した時点でバーの右セクションに「あ」ボタンが入っています。クリックでパネルをトグルします。位置は `omarchy bar move` で変更できます。
+手順 1 で有効化した時点でバーの右セクションに「あ」ボタンが入っています。クリックでパネルをトグルします。位置は `omarchy bar move` で変更できます。
 
 ## 使い方
 
@@ -159,6 +154,7 @@ paste_key = "ctrl+shift+v"
 | ファイル | 内容 |
 |---|---|
 | `dict/` | システム辞書 (`dict fetch` の保存先) |
+| `bin/skk-popup-engine` | 「エンジンを取得」でダウンロードしたエンジン (skk-popup とは非共有) |
 | `userdict.json` | 単語登録したユーザー辞書 |
 | `history.json` | 候補の学習履歴 (読みごと最大 8 件) |
 | `input-history.json` | コピー履歴 (最大 30 件) |
@@ -211,6 +207,7 @@ manifest.json              Omarchy plugin manifest (kinds: panel, bar-widget / k
 Panel.qml                  入力パネル (エンジンの起動・キー送信・状態の描画)
 BarWidget.qml              バーの「あ」ボタン
 SkkButton.qml, SkkModeBadge.qml   パネル内の小さな部品
+scripts/fetch-engine.sh    「エンジンを取得」ボタンが実行 (Releases から arch 別バイナリを DL)
 cmd/skk-popup-engine/      CLI (serve / dict fetch / dict list / version)
 internal/skk/              SKK エンジン (ローマ字変換、状態機械、単語登録、辞書)
 internal/store/            userdict.json / history.json / input-history.json の永続化
