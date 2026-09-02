@@ -9,8 +9,16 @@ here=$(dirname "$0")
 DATA="${XDG_DATA_HOME:-$HOME/.local/share}/skk-popup"
 MANAGED="$DATA/bin/skk-popup-engine"
 
+case "$(uname -m)" in
+  x86_64 | amd64) arch=amd64 ;;
+  aarch64 | arm64) arch=arm64 ;;
+  *) arch="" ;;
+esac
+VENDORED=""
+[ -n "$arch" ] && VENDORED="$here/../bin/skk-popup-engine-linux-$arch"
+
 engine=""
-for p in "${SKK_POPUP_ENGINE:-}" "$MANAGED" "$HOME/.local/bin/skk-popup-engine" "$HOME/go/bin/skk-popup-engine"; do
+for p in "${SKK_POPUP_ENGINE:-}" "$VENDORED" "$MANAGED" "$HOME/.local/bin/skk-popup-engine" "$HOME/go/bin/skk-popup-engine"; do
   if [ -n "$p" ] && [ -x "$p" ]; then engine="$p"; break; fi
 done
 if [ -z "$engine" ] && command -v skk-popup-engine >/dev/null 2>&1; then

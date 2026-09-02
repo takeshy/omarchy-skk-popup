@@ -46,7 +46,7 @@ omarchy plugin add https://github.com/takeshy/omarchy-skk-popup.git --enable
 
 - 同梱バイナリが既定で使われます (`<プラグインdir>/bin/skk-popup-engine-linux-<arch>`)。
 - **自分のビルドを使う** → `SKK_POPUP_ENGINE=/path/to/skk-popup-engine` (これだけが同梱版に優先)。`go install …/cmd/skk-popup-engine@latest` や `make install-engine` (→ `~/.local/bin`) は同梱版より**後**に探索されます。
-- **amd64 / arm64 以外** → 「辞書を取得」ボタン内蔵の `setup.sh` が Releases から取得を試み、無ければソースからビルドしてください。
+- **amd64 / arm64 以外** → 同梱バイナリも `fetch-engine.sh` のダウンロードも対象外なので、`go install github.com/takeshy/omarchy-skk-popup/cmd/skk-popup-engine@latest` か `make install-engine` で自分でビルドしてください。
 
 探索順: `$SKK_POPUP_ENGINE` → `<プラグインdir>/bin/skk-popup-engine-linux-<arch>` → `<プラグインdir>/bin/skk-popup-engine` → `~/.local/share/skk-popup/bin` → `~/.local/bin` → `~/go/bin` → `/usr/local/bin` → `/usr/bin` → `PATH`。
 
@@ -73,6 +73,34 @@ o.bind("CTRL + SHIFT + K", "SKK popup", "omarchy-shell shell summon takeshy.skk-
 ### 4. バーの「あ」ボタン
 
 手順 1 で有効化した時点でバーの右セクションに「あ」ボタンが入っています。クリックでパネルをトグル。位置は `omarchy bar move` で変更できます。
+
+## アンインストール
+
+```sh
+omarchy plugin remove takeshy.skk-popup
+```
+
+これで QML・同梱バイナリ・バーの「あ」ボタンが消えます。手順 3 で `bindings.conf` / `bindings.lua` に貼ったホットキー行があれば手動で削除して `hyprctl reload` してください。
+
+辞書・ユーザー辞書・学習履歴・入力履歴・パネル位置・設定は **プラグインを消しても残ります** (skk-popup と共有する設計のため意図的)。完全に消すには:
+
+```sh
+rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/skk-popup"   # 辞書・ユーザー辞書・学習/入力履歴・パネル位置/設定
+rm -rf "$HOME/.config/skk-popup"                          # config.toml (skk-popup と共有。単体で使うなら残す)
+```
+
+## セキュリティ・同梱バイナリ
+
+- **同梱物**: `bin/skk-popup-engine-linux-amd64` と `-arm64` は、このリポジトリの Go ソース (`cmd/` / `internal/`) から `make vendor-engine` でビルドした静的 ELF です (バージョンは `manifest.json` の `version` を `-X main.version=` で埋め込み)。GitHub Releases の同名アセットは同じタグのソースを `.github/workflows/release.yml` がビルドしたものです。
+- **`omarchy plugin add` / `update`** は git clone と manifest 検証だけで、プラグインのコードは実行しません。
+- **実行時のネットワークアクセスは既定で無し**。amd64 / arm64 では同梱バイナリを直接使うため、何もダウンロードしません。
+- **`scripts/fetch-engine.sh`** はフォールバック専用です (同梱バイナリが見つからない / 使えないときだけ、⋮ → 設定 の「辞書を取得」や `engineMissing` から起動)。動作は次の順:
+  1. 同梱の `bin/skk-popup-engine-linux-<arch>` があればそれをコピーするだけ (ネットワーク無し)。
+  2. 無いときだけ、このリポジトリの GitHub Release から該当アセットを取得し、**同梱バイナリの SHA-256 と一致した場合のみ**インストール。照合先の同梱バイナリすら無いときに限り、実行チェックのみで受け入れ、検証できなかった旨を警告します。
+
+  `sudo` / パッケージマネージャ / `/etc` 書き換え / systemd / `curl | sh` は使いません。書き込み先は `~/.local/share/skk-popup/bin/` のみです。
+- **`scripts/setup.sh`** は上記のエンジン準備 (必要時のみ) と `skk-popup-engine dict fetch` (辞書のダウンロード) を行います。
+- **辞書の取得**は「辞書を取得」ボタンを押したときだけ実行され、取得元は `skk-popup-engine dict fetch` が参照する SKK-JISYO の標準配布先です。
 
 ## 使い方
 
