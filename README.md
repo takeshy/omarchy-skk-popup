@@ -188,7 +188,7 @@ paste_key = "ctrl+shift+v"
  "extraDicts":["…"],"dataDir":"…","configPath":"…","enginePath":"…/skk-popup-engine"}
 {"type":"state","text":"▽にほんご","cursor":5,"selStart":5,"selEnd":5,"mode":"SKK 変換",
  "candidate":"","candidateActive":false,
- "status":"Enter: copy / Shift+Enter: newline / Space: convert",
+ "status":"Space: convert / Enter: copy / Ctrl+O: select all",
  "register":{"open":false,"reading":"","text":"","cursor":0,"selStart":0,"selEnd":0,"mode":"","candidate":"","error":""},
  "close":false,"copied":false}
 {"type":"config","entries":123456,"extraDicts":["…"]}   // addDict / removeDict の後

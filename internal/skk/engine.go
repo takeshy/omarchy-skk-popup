@@ -3,7 +3,7 @@ package skk
 import "strings"
 
 const (
-	defaultStatus     = "Enter: copy / Shift+Enter: newline / Space: convert"
+	defaultStatus     = "Space: convert / Enter: copy / Ctrl+O: select all"
 	candidateStatus   = "Space: next / Enter: commit / x: previous"
 	inlineCandidates  = 4
 	listPageSize      = 7
