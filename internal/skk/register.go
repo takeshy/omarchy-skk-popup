@@ -377,8 +377,29 @@ func (e *Engine) handleRegisterKey(k Key) {
 			}
 			return
 		case "g":
-			// If the modal opened from an okuri-ari reading that has no
-			// entry, Ctrl+G bails all the way to an okuri-nasi reading.
+			// Cancel whatever is in flight first, like the main buffer;
+			// only leave the dialog when nothing is being composed.
+			if r.showingCandidate {
+				r.showingCandidate = false
+				r.invalidateCandidates()
+				e.registerError = ""
+				return
+			}
+			if r.composing {
+				if foldOkuriIntoReading(r) {
+					e.registerError = ""
+					return
+				}
+				r.resetComposition()
+				e.registerError = ""
+				return
+			}
+			if r.roman != "" {
+				r.roman = ""
+				return
+			}
+			// Nothing in flight: leave the dialog. If it opened from an
+			// okuri-ari reading with no entry, fold that to okuri-nasi.
 			if e.main.composing && len(e.main.candidates) == 0 {
 				foldOkuriIntoReading(&e.main)
 			}

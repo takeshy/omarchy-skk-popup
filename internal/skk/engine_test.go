@@ -277,6 +277,28 @@ func TestCtrlGFoldsOkuri(t *testing.T) {
 	}
 }
 
+func TestRegisterCtrlGProgressive(t *testing.T) {
+	e, _, _ := newTestEngine(t)
+	typeKeys(e, "Mitei ") // no みてい entry -> register modal
+	typeKeys(e, "Kanji")  // convert inside the dialog
+	press(e, " ")         // candidate 漢字
+	if s := e.State(); s.Register.Candidate == "" {
+		t.Fatalf("setup: expected a candidate: %+v", s.Register)
+	}
+	e.HandleKey(Key{Key: "g", Ctrl: true})
+	if s := e.State(); !s.Register.Open || s.Register.Text != "▽かんじ" {
+		t.Fatalf("1st C-g: drop candidate, keep dialog: %+v", s.Register)
+	}
+	e.HandleKey(Key{Key: "g", Ctrl: true})
+	if s := e.State(); !s.Register.Open || s.Register.Text != "" {
+		t.Fatalf("2nd C-g: cancel reading, keep dialog: %+v", s.Register)
+	}
+	e.HandleKey(Key{Key: "g", Ctrl: true})
+	if e.RegisterOpen() {
+		t.Fatalf("3rd C-g: close the dialog")
+	}
+}
+
 func TestRegisterDialogAutoOkuri(t *testing.T) {
 	e, _, _ := newTestEngine(t)
 	typeKeys(e, "HageRu") // no はげr entry -> register modal
