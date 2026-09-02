@@ -511,7 +511,19 @@ Item {
     BorderSurface {
       id: card
       width: root.cardWidth
-      height: content.implicitHeight + card.contentTopInset + card.contentBottomInset
+      readonly property int baseHeight: content.implicitHeight + card.contentTopInset + card.contentBottomInset
+      // The Settings / Help overlays grow the card so their content fits
+      // without scrolling (clamped to the screen).
+      height: {
+        var maxH = panel.height > 0 ? panel.height - Style.gapsOut * 2 : card.baseHeight
+        var chrome = card.contentTopInset + card.contentBottomInset + settingsTitle.implicitHeight + root.gap
+        if (root.settingsOpen)
+          return Math.min(maxH, Math.max(card.baseHeight, settingsFlick.contentHeight + chrome))
+        if (root.helpOpen)
+          return Math.min(maxH, Math.max(card.baseHeight, helpBody.implicitHeight + chrome))
+        return card.baseHeight
+      }
+      Behavior on height { NumberAnimation { duration: 100; easing.type: Easing.OutQuad } }
       radius: root.cornerRadius
       // Centred until the header is dragged; clampCard* keeps it on screen
       // (and re-centres a NaN axis or a position left off a smaller output).
