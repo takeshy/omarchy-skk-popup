@@ -259,6 +259,25 @@ func TestRegisterOkuriAri(t *testing.T) {
 	}
 }
 
+func TestRegisterDialogAutoOkuri(t *testing.T) {
+	e, _, _ := newTestEngine(t)
+	typeKeys(e, "HageRu") // no はげr entry -> register modal
+	if !e.State().Register.Open {
+		t.Fatal("register modal should open")
+	}
+	// Inside the dialog, convert かんj + i via the shared romaji layer: the
+	// test dict has "かんj /感/". Type "Kan" then okuri "J" then "i".
+	typeKeys(e, "KanJi")
+	s := e.State()
+	if !s.Register.Open || s.Register.Candidate != "感じ" {
+		t.Fatalf("okurigana should auto-convert in the dialog (no Space): %+v", s.Register)
+	}
+	press(e, "Enter") // commit the candidate into the dialog buffer
+	if got := e.State().Register.Text; got != "感じ" {
+		t.Fatalf("dialog buffer after commit = %q", got)
+	}
+}
+
 func TestCopyAndClose(t *testing.T) {
 	e, clip, p := newTestEngine(t)
 	typeKeys(e, "Nihongo ")

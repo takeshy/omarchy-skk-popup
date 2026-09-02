@@ -121,7 +121,32 @@ func (e *Engine) convertRegisterRomanChunk() bool {
 	if !r.composing {
 		e.insertRegisterKana(kana)
 	}
+	if r.composing && r.okuriKey != "" && r.okuriKana != "" && r.roman == "" && len(r.candidates) == 0 {
+		e.autoConvertRegisterOkuri()
+	}
 	return true
+}
+
+// autoConvertRegisterOkuri mirrors the main buffer: once the okurigana is
+// complete, show the candidate without waiting for Space. Silent when the
+// reading has no entry (the preedit stays; Space still reports it).
+func (e *Engine) autoConvertRegisterOkuri() {
+	r := &e.reg
+	if !r.composing || r.okuriKey == "" || r.okuriKana == "" || r.roman != "" || len(r.candidates) > 0 {
+		return
+	}
+	key := r.lookupKey()
+	if key == "" {
+		return
+	}
+	cands := e.dict.Lookup(key)
+	if len(cands) == 0 {
+		return
+	}
+	r.candidates = cands
+	r.candidateIndex = 0
+	r.showingCandidate = true
+	e.registerError = ""
 }
 
 func (e *Engine) flushRegisterRoman() bool {
@@ -227,6 +252,9 @@ func (e *Engine) handleRegisterPrintable(k Key) bool {
 	if isUpperASCII(ch) && !r.composing {
 		e.startRegisterComposition()
 	} else if r.shouldStartOkuri(ch) {
+		if r.roman == "n" {
+			r.consumePendingN() // flush a pending ん into the reading first
+		}
 		r.okuriKey = toLowerASCII(ch)
 		r.okuriKana = ""
 		r.candidates = nil

@@ -143,7 +143,7 @@ func (e *Engine) registerState() RegisterState {
 	}
 	if r.showingCandidate {
 		raw := r.currentCandidate()
-		rs.Candidate = candidateWord(raw)
+		rs.Candidate = candidateWord(raw) + r.okuriKana
 		if annotation := candidateAnnotation(raw); annotation != "" {
 			rs.Candidate += " ※" + annotation
 		}
