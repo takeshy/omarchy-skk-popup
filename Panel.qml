@@ -30,7 +30,38 @@ Item {
   property string engineVersion: ""
   property string enginePath: ""
   property bool menuOpen: false
+  property bool helpOpen: false
   readonly property string pluginVersion: (manifest && manifest.version) ? String(manifest.version) : ""
+
+  readonly property string helpText:
+    "── かな入力 ──\n" +
+    "小文字ローマ字 → かな\n" +
+    "大文字で開始 → 変換開始 (Nihongo → ▽にほんご)\n" +
+    "変換中の大文字 → 送り仮名あり変換 (KanJi → 感じ)\n" +
+    ";  sticky shift / 送り仮名開始位置\n" +
+    "Space  変換 / 次候補\n" +
+    "5候補目から一覧表示、A S D F J K L で選択 (Space 次頁 / x 前頁)\n" +
+    "x  前候補へ / 先頭で x はかな表示へ\n" +
+    "X  表示中の候補をユーザー辞書・学習履歴から削除\n" +
+    "Ctrl+G  候補をキャンセルして変換バッファへ\n" +
+    "Tab  過去に変換した読みから補完\n" +
+    "候補なしで Space / 最終候補の次の Space  単語登録\n" +
+    "読みに数字 → 数値変換 (だい5かい → 第５回 / 第五回)\n" +
+    ">  接頭辞変換 (ちょう> → 超) / ▽> 接尾辞\n" +
+    "q  カタカナで確定 (Ctrl+Q 半角カタカナ)\n" +
+    "非変換の q / Ctrl+Q  カタカナ入力モード切替\n" +
+    "l 英数モード / L 全角英数 / Ctrl+J かなモード\n" +
+    "空のかな入力で /  Abbrev (▽/word)、// で / を入力\n" +
+    "zh zj zk zl → ← ↓ ↑ → / z Space → 全角スペース\n" +
+    "z. z, z- z/ z[ z] → … ‥ ～ ・ 『 』\n" +
+    "\n── 編集・その他 ──\n" +
+    "Shift+Enter  改行\n" +
+    "Ctrl+V / Ctrl+Shift+V  クリップボードを挿入\n" +
+    "Escape  変換中はキャンセル / 未変換なら閉じる (コピーせず保持)\n" +
+    "↑ / ↓  コピー履歴 (最大30。↓ で下書きに戻る)\n" +
+    "Enter (未変換) / Copy  コピーして閉じる\n" +
+    "ヘッダーをドラッグ  パネル移動 / 右クリックで中央\n" +
+    "Ctrl+Shift+K (表示中)  入力欄へフォーカス"
   // The engine binary was not found anywhere; offer to download it.
   property bool engineMissing: false
   property bool engineFetching: false
@@ -41,7 +72,10 @@ Item {
   // install, or a pinned $SKK_POPUP_ENGINE, is updated by its own means.
   readonly property bool engineManaged: root.enginePath.indexOf("/skk-popup/bin/") >= 0
     || (root.pluginDir.length > 0 && root.enginePath.indexOf(root.pluginDir + "/bin/") === 0)
-  readonly property bool engineOverridden: Quickshell.env("SKK_POPUP_ENGINE").length > 0
+  readonly property bool engineOverridden: {
+    var v = Quickshell.env("SKK_POPUP_ENGINE")
+    return !!v && v.length > 0
+  }
   readonly property bool engineUpdatable: root.engineReady && root.engineManaged
     && !root.engineOverridden && !root.engineFetching
   property string bufferText: ""
@@ -326,13 +360,6 @@ Item {
     }
   }
 
-  // "ヘルプ" opens the key-operation section of the README in a browser.
-  Process {
-    id: helpOpen
-    command: ["xdg-open", "https://github.com/takeshy/omarchy-skk-popup#キー操作"]
-    running: false
-  }
-
   // Remembers where the card was dragged, across restarts.
   FileView {
     id: cardPosFile
@@ -453,8 +480,8 @@ Item {
         focus: true
         Keys.priority: Keys.BeforeItem
         Keys.onPressed: function(event) {
-          if (root.menuOpen) {
-            if (event.key === Qt.Key_Escape) root.menuOpen = false
+          if (root.menuOpen || root.helpOpen) {
+            if (event.key === Qt.Key_Escape) { root.menuOpen = false; root.helpOpen = false }
             event.accepted = true
             return
           }
@@ -725,8 +752,8 @@ Item {
               onActivated: { root.recenterCard(); root.menuOpen = false }
             }
             MenuRow {
-              label: "ヘルプ (キー操作) を開く"
-              onActivated: { helpOpen.running = true; root.menuOpen = false }
+              label: "ヘルプ (キー操作)"
+              onActivated: { root.menuOpen = false; root.helpOpen = true }
             }
             MenuRow {
               visible: root.engineReady || root.engineFetching
@@ -736,6 +763,59 @@ Item {
                 : (root.engineUpdatable ? "エンジンを更新" : "エンジンを更新 (手動版は対象外)")
               onActivated: { root.fetchEngine(); root.menuOpen = false }
             }
+          }
+        }
+      }
+
+      // Help overlay: scrollable key-operation cheat sheet.
+      Rectangle {
+        anchors.fill: parent
+        radius: root.cornerRadius
+        color: Util.alpha(root.background, 0.98)
+        visible: root.helpOpen
+
+        MouseArea { anchors.fill: parent; onClicked: function(mouse) { mouse.accepted = true } }
+
+        Text {
+          id: helpTitle
+          anchors { top: parent.top; left: parent.left; topMargin: root.pad; leftMargin: root.pad }
+          textFormat: Text.PlainText
+          text: "キー操作"
+          color: root.foreground
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.title
+          font.bold: true
+        }
+
+        SkkButton {
+          anchors { top: parent.top; right: parent.right; topMargin: root.pad; rightMargin: root.pad }
+          label: "閉じる"
+          foreground: root.foreground
+          accent: root.accent
+          fontFamily: root.fontFamily
+          onClicked: root.helpOpen = false
+        }
+
+        Flickable {
+          anchors {
+            left: parent.left; right: parent.right; bottom: parent.bottom; top: helpTitle.bottom
+            leftMargin: root.pad; rightMargin: root.pad; bottomMargin: root.pad; topMargin: root.gap
+          }
+          clip: true
+          contentWidth: width
+          contentHeight: helpBody.implicitHeight
+          boundsBehavior: Flickable.StopAtBounds
+
+          Text {
+            id: helpBody
+            width: parent.width
+            textFormat: Text.PlainText
+            text: root.helpText
+            wrapMode: Text.Wrap
+            lineHeight: 1.35
+            color: root.foreground
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.bodySmall
           }
         }
       }
