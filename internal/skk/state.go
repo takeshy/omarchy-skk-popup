@@ -6,8 +6,12 @@ import "encoding/json"
 // is a pure view of it: display text with the preedit already spliced in,
 // the caret offset into that text, and the labels the status bar shows.
 type State struct {
-	Text            string `json:"text"`
-	Cursor          int    `json:"cursor"`
+	Text   string `json:"text"`
+	Cursor int    `json:"cursor"`
+	// SelStart/SelEnd are the ordered ends of a Shift-selection over the
+	// display text; equal (both = Cursor) when there is no selection.
+	SelStart        int    `json:"selStart"`
+	SelEnd          int    `json:"selEnd"`
 	Mode            string `json:"mode"`
 	Candidate       string `json:"candidate"`
 	CandidateActive bool   `json:"candidateActive"`
@@ -26,6 +30,8 @@ type RegisterState struct {
 	Reading   string `json:"reading"`
 	Text      string `json:"text"`
 	Cursor    int    `json:"cursor"`
+	SelStart  int    `json:"selStart"`
+	SelEnd    int    `json:"selEnd"`
 	Mode      string `json:"mode"`
 	Candidate string `json:"candidate"`
 	Error     string `json:"error"`
@@ -41,14 +47,21 @@ func (e *Engine) State() State {
 	display = append(display, preedit...)
 	display = append(display, c.text[c.cursor:]...)
 
+	cursor := c.cursor + len(preedit)
 	s := State{
 		Text:     string(display),
-		Cursor:   c.cursor + len(preedit),
+		Cursor:   cursor,
+		SelStart: cursor,
+		SelEnd:   cursor,
 		Mode:     e.modeLabel(),
 		Status:   e.status,
 		Register: e.registerState(),
 		Close:    e.closeRequested,
 		Copied:   e.copied,
+	}
+	// A selection only exists over plain committed text (no preedit).
+	if len(preedit) == 0 && c.hasSelection() {
+		s.SelStart, s.SelEnd = c.selRange()
 	}
 	if c.composing && c.showingCandidate {
 		s.CandidateActive = true
@@ -97,12 +110,18 @@ func (e *Engine) registerState() RegisterState {
 	display = append(display, preedit...)
 	display = append(display, r.text[r.cursor:]...)
 
+	rcursor := r.cursor + len(preedit)
 	rs := RegisterState{
-		Open:    true,
-		Reading: e.registerKey,
-		Text:    string(display),
-		Cursor:  r.cursor + len(preedit),
-		Error:   e.registerError,
+		Open:     true,
+		Reading:  e.registerKey,
+		Text:     string(display),
+		Cursor:   rcursor,
+		SelStart: rcursor,
+		SelEnd:   rcursor,
+		Error:    e.registerError,
+	}
+	if len(preedit) == 0 && r.hasSelection() {
+		rs.SelStart, rs.SelEnd = r.selRange()
 	}
 	switch {
 	case r.wideAscii:

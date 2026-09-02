@@ -71,11 +71,16 @@ Item {
     "空のかな入力で /  Abbrev (▽/word)、// で / を入力\n" +
     "zh zj zk zl → ← ↓ ↑ → / z Space → 全角スペース\n" +
     "z. z, z- z/ z[ z] → … ‥ ～ ・ 『 』\n" +
-    "\n── 編集・その他 ──\n" +
+    "\n── 編集 (非変換時) ──\n" +
     "Shift+Enter  改行\n" +
     "Ctrl+V / Ctrl+Shift+V  クリップボードを挿入\n" +
-    "Escape  変換中はキャンセル / 未変換なら閉じる (コピーせず保持)\n" +
-    "↑ / ↓  コピー履歴 (最大30。↓ で下書きに戻る)\n" +
+    "Shift+矢印 / Shift+Home / Shift+End  範囲選択\n" +
+    "Ctrl+A  全選択 / Ctrl+C コピー / Ctrl+X 切り取り\n" +
+    "Ctrl+F / Ctrl+B  前後へ / Ctrl+H 行頭 / Ctrl+E 行末\n" +
+    "Ctrl+K  行末まで削除 / Ctrl+U 行頭まで削除 / Ctrl+Z 元に戻す\n" +
+    "↑ / ↓  複数行なら行移動、1行目↑/最終行↓ でコピー履歴\n" +
+    "\n── その他 ──\n" +
+    "Escape  選択解除 / 変換キャンセル / 未変換なら閉じる (コピーせず保持)\n" +
     "Enter (未変換) / Copy  コピーして閉じる\n" +
     "ヘッダーをドラッグ  パネル移動 / 右クリックで中央\n" +
     "Ctrl+Shift+K (表示中)  入力欄へフォーカス"
@@ -83,6 +88,10 @@ Item {
   property bool engineMissing: false
   property string bufferText: ""
   property int bufferCursor: 0
+  property int selStart: 0
+  property int selEnd: 0
+  property int regSelStart: 0
+  property int regSelEnd: 0
   property string modeLabel: "SKK かな"
   property string candidateText: ""
   property bool candidateActive: false
@@ -245,6 +254,8 @@ Item {
 
     root.bufferText = msg.text || ""
     root.bufferCursor = msg.cursor || 0
+    root.selStart = (typeof msg.selStart === "number") ? msg.selStart : root.bufferCursor
+    root.selEnd = (typeof msg.selEnd === "number") ? msg.selEnd : root.bufferCursor
     root.modeLabel = msg.mode || ""
     root.candidateText = msg.candidate || ""
     root.candidateActive = msg.candidateActive === true
@@ -254,17 +265,31 @@ Item {
     root.registerReading = reg.reading || ""
     root.registerText = reg.text || ""
     root.registerCursor = reg.cursor || 0
+    root.regSelStart = (typeof reg.selStart === "number") ? reg.selStart : root.registerCursor
+    root.regSelEnd = (typeof reg.selEnd === "number") ? reg.selEnd : root.registerCursor
     root.registerMode = reg.mode || ""
     root.registerCandidate = reg.candidate || ""
     root.registerError = reg.error || ""
 
     editor.text = root.bufferText
-    editor.cursorPosition = root.bufferCursor
+    root.applySelection(editor, root.bufferCursor, root.selStart, root.selEnd)
     registerEditor.text = root.registerText
-    registerEditor.cursorPosition = root.registerCursor
+    root.applySelection(registerEditor, root.registerCursor, root.regSelStart, root.regSelEnd)
     Qt.callLater(root.ensureCursorVisible)
 
     if (msg.close === true && root.opened) root.dismiss()
+  }
+
+  // Mirror the engine's caret + Shift-selection onto a read-only TextEdit.
+  function applySelection(field, cursor, selStart, selEnd) {
+    if (selStart !== selEnd) {
+      var anchor = (cursor === selStart) ? selEnd : selStart
+      field.cursorPosition = anchor
+      field.moveCursorSelection(cursor, TextEdit.SelectCharacters)
+    } else {
+      field.deselect()
+      field.cursorPosition = cursor
+    }
   }
 
   function ensureCursorVisible() {
@@ -671,6 +696,8 @@ Item {
               wrapMode: TextEdit.Wrap
               textFormat: TextEdit.PlainText
               color: root.foreground
+              selectionColor: Util.alpha(root.accent, 0.35)
+              selectedTextColor: root.foreground
               font.family: root.fontFamily
               font.pixelSize: Style.font.heading
               activeFocusOnPress: false
@@ -1168,6 +1195,8 @@ Item {
               wrapMode: TextEdit.NoWrap
               textFormat: TextEdit.PlainText
               color: root.foreground
+              selectionColor: Util.alpha(root.accent, 0.35)
+              selectedTextColor: root.foreground
               font.family: root.fontFamily
               font.pixelSize: Style.font.heading
               activeFocusOnPress: false

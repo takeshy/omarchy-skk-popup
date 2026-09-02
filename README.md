@@ -116,7 +116,13 @@ o.bind("CTRL + SHIFT + K", "SKK popup", "omarchy-shell shell summon takeshy.skk-
 - `zh zj zk zl` → `←↓↑→` / `z Space` → 全角スペース / `z. z, z- z/ z[ z]` → `… ‥ ～ ・ 『 』`
 - `Shift+Enter`: 改行
 - `Ctrl+V` / `Ctrl+Shift+V`: クリップボードの内容を挿入
-- `Escape`: 変換中はキャンセル / 未変換状態ならパネルを閉じる (コピーせず、入力内容は次回まで保持)
+- 非変換時の確定文字列の編集 (web の textarea 風):
+  - `Shift+矢印` / `Shift+Home` / `Shift+End`: 範囲選択（選択中に入力・`Backspace` で置換）
+  - `Ctrl+A`: 全選択 / `Ctrl+C`: 選択をコピー（閉じない）/ `Ctrl+X`: 選択を切り取り
+  - Emacs 風: `Ctrl+F` / `Ctrl+B` カーソル前後 / `Ctrl+H` 行頭 / `Ctrl+E` 行末 / `Ctrl+K` 行末まで削除 / `Ctrl+U` 行頭まで削除
+  - `Ctrl+Z`: 元に戻す
+  - `↑` / `↓`: 複数行のときは上下の行へ移動。1 行目で `↑`（最終行で `↓`）はコピー履歴へ
+- `Escape`: 選択中は選択解除 / 変換中はキャンセル / 未変換状態ならパネルを閉じる (コピーせず、入力内容は次回まで保持)
 - `↑` / `↓`: コピー履歴を移動 (最大 30 件。`↓` で現在の下書きに戻る)
 - パネル表示時、外部アプリでコピーされた新しいテキストも履歴へ自動追加
 - `Enter`(未変換) / `Copy`: コピーして閉じる
@@ -182,15 +188,16 @@ paste_key = "ctrl+shift+v"
 // ← stdout
 {"type":"ready","version":"1.3.0","entries":123456,"dictionaries":["…/SKK-JISYO.L"],
  "extraDicts":["…"],"dataDir":"…","configPath":"…","enginePath":"…/skk-popup-engine"}
-{"type":"state","text":"▽にほんご","cursor":5,"mode":"SKK 変換","candidate":"","candidateActive":false,
+{"type":"state","text":"▽にほんご","cursor":5,"selStart":5,"selEnd":5,"mode":"SKK 変換",
+ "candidate":"","candidateActive":false,
  "status":"Enter: copy / Shift+Enter: newline / Space: convert",
- "register":{"open":false,"reading":"","text":"","cursor":0,"mode":"","candidate":"","error":""},
+ "register":{"open":false,"reading":"","text":"","cursor":0,"selStart":0,"selEnd":0,"mode":"","candidate":"","error":""},
  "close":false,"copied":false}
 {"type":"config","entries":123456,"extraDicts":["…"]}   // addDict / removeDict の後
 {"type":"error","message":"…"}
 ```
 
-`text` は確定文字列にプリエディット (`▽…` や未確定ローマ字) を差し込んだ表示用文字列、`cursor` はその中のキャレット位置です。`close` が `true` なら UI はパネルを閉じます。
+`text` は確定文字列にプリエディット (`▽…` や未確定ローマ字) を差し込んだ表示用文字列、`cursor` はその中のキャレット位置です。`selStart` / `selEnd` は Shift 選択範囲 (未選択なら両方 `cursor` と同値)。`close` が `true` なら UI はパネルを閉じます。
 
 ## 開発
 

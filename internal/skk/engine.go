@@ -67,19 +67,44 @@ type Engine struct {
 	// during that call (so the UI can trigger auto paste after hiding).
 	closeRequested bool
 	copied         bool
+
+	// undo holds pre-mutation snapshots of the main buffer for Ctrl+Z.
+	undo []textSnapshot
+}
+
+type textSnapshot struct {
+	text   []rune
+	cursor int
+}
+
+func runesEqual(a, b []rune) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func New(dict *Dictionary, clip Clipboard, persister Persister) *Engine {
 	if dict == nil {
 		dict = NewDictionary()
 	}
-	return &Engine{
+	e := &Engine{
 		dict:              dict,
 		clip:              clip,
 		persister:         persister,
 		status:            defaultStatus,
 		inputHistoryIndex: -1,
 	}
+	e.main.selAnchor = -1
+	e.main.goalCol = -1
+	e.reg.selAnchor = -1
+	e.reg.goalCol = -1
+	return e
 }
 
 // SetInputHistoryJSON installs the persisted clipboard input history.
@@ -176,6 +201,8 @@ func (e *Engine) showInputHistory(direction int) bool {
 		c.text = []rune(e.inputHistory[e.inputHistoryIndex])
 	}
 	c.cursor = len(c.text)
+	c.selAnchor = -1
+	c.goalCol = -1
 	return true
 }
 
@@ -340,6 +367,7 @@ func (e *Engine) showCandidate() { e.main.showingCandidate = true }
 
 func (e *Engine) startAbbrev() {
 	c := &e.main
+	c.deleteSelection()
 	c.resetComposition()
 	c.abbrevMode = true
 	c.abbrev = ""
@@ -352,6 +380,7 @@ func (e *Engine) closeAbbrev(replacement string) {
 
 func (e *Engine) startComposition() {
 	c := &e.main
+	c.deleteSelection()
 	c.composing = true
 	c.kana = ""
 	c.okuriKey = ""
@@ -791,6 +820,9 @@ func (e *Engine) resetForNewSession() {
 	c.katakana = ""
 	c.text = nil
 	c.cursor = 0
+	c.selAnchor = -1
+	c.goalCol = -1
+	e.undo = nil
 }
 
 // PasteClipboard inserts the clipboard text at the cursor, committing any
@@ -842,7 +874,34 @@ func (e *Engine) HandleKey(k Key) {
 		e.handleRegisterKey(k)
 		return
 	}
+	if k.Ctrl && !k.Alt && toLowerASCII(k.Key) == "z" {
+		e.performUndo()
+		return
+	}
+	before := append([]rune(nil), e.main.text...)
+	beforeCursor := e.main.cursor
 	e.handleMainKey(k)
+	if !e.closeRequested && !runesEqual(before, e.main.text) {
+		e.undo = append(e.undo, textSnapshot{text: before, cursor: beforeCursor})
+		if len(e.undo) > 200 {
+			e.undo = e.undo[len(e.undo)-200:]
+		}
+	}
+}
+
+func (e *Engine) performUndo() {
+	if len(e.undo) == 0 {
+		return
+	}
+	s := e.undo[len(e.undo)-1]
+	e.undo = e.undo[:len(e.undo)-1]
+	c := &e.main
+	c.resetComposition()
+	c.text = s.text
+	c.cursor = s.cursor
+	c.selAnchor = -1
+	c.goalCol = -1
+	c.clampCursor()
 }
 
 func (e *Engine) handleMainKey(k Key) {
@@ -850,18 +909,85 @@ func (e *Engine) handleMainKey(k Key) {
 	lower := toLowerASCII(k.Key)
 
 	if !c.composing && c.roman == "" && !c.abbrevMode && (k.Key == "Up" || k.Key == "Down") {
-		direction := 1
+		dir := 1
 		if k.Key == "Up" {
-			direction = -1
+			dir = -1
 		}
-		e.showInputHistory(direction)
+		// Shift extends a selection by line and never touches history.
+		if k.Shift {
+			e.moveCaretVertical(c, dir, true)
+			return
+		}
+		// While actively browsing history, or when the caret is on the
+		// first/last line, Up/Down navigate history as before. Otherwise
+		// move the caret to the previous/next line.
+		onBoundary := (dir < 0 && lineIndexAt(c.text, c.cursor) == 0) ||
+			(dir > 0 && lineIndexAt(c.text, c.cursor) == lineCount(c.text)-1)
+		if e.inputHistoryIndex >= 0 || onBoundary {
+			c.clearSelection()
+			c.goalCol = -1
+			e.showInputHistory(dir)
+			return
+		}
+		e.moveCaretVertical(c, dir, false)
 		return
 	}
 	e.inputHistoryIndex = -1
 	e.inputHistoryDraft = nil
 
 	if k.Ctrl && !k.Alt {
+		editable := !c.composing && c.roman == "" && !c.abbrevMode
 		switch lower {
+		case "a", "o": // select all
+			if editable && len(c.text) > 0 {
+				c.selAnchor = 0
+				c.cursor = len(c.text)
+				c.goalCol = -1
+			}
+			return
+		case "h": // beginning of line ("head")
+			if editable {
+				e.moveCaretTo(c, lineStartOfPos(c.text, c.cursor), k.Shift)
+			}
+			return
+		case "e": // end of line
+			if editable {
+				e.moveCaretTo(c, lineEndOfPos(c.text, c.cursor), k.Shift)
+			}
+			return
+		case "f": // forward char
+			if editable {
+				e.moveCaret(c, 1, k.Shift)
+			}
+			return
+		case "b": // backward char
+			if editable {
+				e.moveCaret(c, -1, k.Shift)
+			}
+			return
+		case "k": // kill to end of line
+			if editable {
+				e.killLine(c, 1)
+			}
+			return
+		case "u": // kill to start of line
+			if editable {
+				e.killLine(c, -1)
+			}
+			return
+		case "c": // copy the selection (no close)
+			if c.hasSelection() && e.clip != nil {
+				a, b := c.selRange()
+				_ = e.clip.Copy(string(c.text[a:b]))
+			}
+			return
+		case "x": // cut the selection
+			if c.hasSelection() && e.clip != nil {
+				a, b := c.selRange()
+				_ = e.clip.Copy(string(c.text[a:b]))
+				c.deleteSelection()
+			}
+			return
 		case "j":
 			if c.asciiMode || c.wideAscii {
 				e.enterKanaMode()
@@ -928,6 +1054,10 @@ func (e *Engine) handleMainKey(k Key) {
 		}
 		if c.composing || c.roman != "" {
 			c.resetComposition()
+			return
+		}
+		if c.hasSelection() {
+			c.selAnchor = -1
 			return
 		}
 		e.closeRequested = true
@@ -1025,26 +1155,119 @@ func (e *Engine) handleMainKey(k Key) {
 		return
 	}
 	if !c.composing && c.roman == "" {
-		e.handleCaretKey(c, k.Key)
+		e.handleCaretKey(c, k)
 	}
 }
 
-// handleCaretKey moves the caret through committed text. The browser
-// textarea did this natively; here the engine owns the caret.
-func (e *Engine) handleCaretKey(c *composer, key string) {
-	switch key {
+// handleCaretKey moves the caret through committed text (the browser
+// textarea did this natively). Shift extends a selection; Left/Right/Home/
+// End collapse an existing one, Delete replaces it.
+func (e *Engine) handleCaretKey(c *composer, k Key) {
+	switch k.Key {
 	case "Left":
-		c.cursor--
+		e.moveCaret(c, -1, k.Shift)
 	case "Right":
-		c.cursor++
+		e.moveCaret(c, 1, k.Shift)
 	case "Home":
-		c.cursor = 0
+		e.moveCaretTo(c, lineStartOfPos(c.text, c.cursor), k.Shift)
 	case "End":
-		c.cursor = len(c.text)
+		e.moveCaretTo(c, lineEndOfPos(c.text, c.cursor), k.Shift)
+	case "Up":
+		e.moveCaretVertical(c, -1, k.Shift)
+	case "Down":
+		e.moveCaretVertical(c, 1, k.Shift)
 	case "Delete":
 		c.deleteAfterCursor()
 	}
 	c.clampCursor()
+}
+
+func (e *Engine) startOrKeepSel(c *composer, shift bool) {
+	if shift {
+		if c.selAnchor < 0 {
+			c.selAnchor = c.cursor
+		}
+		return
+	}
+	c.selAnchor = -1
+}
+
+// moveCaret steps left/right; a plain step with a selection collapses to
+// the near edge, a Shift step extends.
+func (e *Engine) moveCaret(c *composer, delta int, shift bool) {
+	c.goalCol = -1
+	if !shift && c.hasSelection() {
+		a, b := c.selRange()
+		if delta < 0 {
+			c.cursor = a
+		} else {
+			c.cursor = b
+		}
+		c.selAnchor = -1
+		return
+	}
+	e.startOrKeepSel(c, shift)
+	c.cursor += delta
+	c.clampCursor()
+}
+
+func (e *Engine) moveCaretTo(c *composer, pos int, shift bool) {
+	c.goalCol = -1
+	e.startOrKeepSel(c, shift)
+	c.cursor = pos
+	c.clampCursor()
+}
+
+// moveCaretVertical moves the caret to the previous/next line, keeping the
+// column (a remembered goal column across consecutive moves). On the first
+// or last line it jumps to the text start/end.
+func (e *Engine) moveCaretVertical(c *composer, dir int, shift bool) {
+	if !shift {
+		c.selAnchor = -1
+	} else {
+		e.startOrKeepSel(c, true)
+	}
+	col := c.goalCol
+	if col < 0 {
+		col = colOfPos(c.text, c.cursor)
+		c.goalCol = col
+	}
+	target := lineIndexAt(c.text, c.cursor) + dir
+	if target < 0 {
+		c.cursor = 0
+	} else if target >= lineCount(c.text) {
+		c.cursor = len(c.text)
+	} else {
+		start, end := lineBounds(c.text, target)
+		if col > end-start {
+			c.cursor = end
+		} else {
+			c.cursor = start + col
+		}
+	}
+	c.clampCursor()
+}
+
+// killLine deletes from the caret to the end (dir>0) or start (dir<0) of
+// the line. At the end of a line C-k eats the newline, joining the lines.
+func (e *Engine) killLine(c *composer, dir int) {
+	if c.deleteSelection() {
+		c.goalCol = -1
+		return
+	}
+	c.selAnchor = -1
+	c.goalCol = -1
+	if dir > 0 {
+		end := lineEndOfPos(c.text, c.cursor)
+		if end == c.cursor && end < len(c.text) {
+			end++
+		}
+		c.text = append(c.text[:c.cursor:c.cursor], c.text[end:]...)
+	} else {
+		start := lineStartOfPos(c.text, c.cursor)
+		c.text = append(c.text[:start:start], c.text[c.cursor:]...)
+		c.cursor = start
+	}
 }
 
 // SetCursor moves the caret to a display offset (a mouse click). Offsets
@@ -1054,6 +1277,8 @@ func (e *Engine) SetCursor(displayPos int) {
 		return
 	}
 	c := &e.main
+	c.selAnchor = -1
+	c.goalCol = -1
 	c.clampCursor()
 	preedit := []rune(e.currentPreeditText())
 	start := c.cursor

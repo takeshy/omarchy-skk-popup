@@ -6,6 +6,11 @@ package skk
 type composer struct {
 	text   []rune
 	cursor int
+	// selAnchor is the fixed end of a Shift-selection over committed text
+	// (-1 when there is no selection). goalCol remembers the target column
+	// across consecutive vertical moves (-1 when unset).
+	selAnchor int
+	goalCol   int
 
 	asciiMode bool
 	wideAscii bool
@@ -119,10 +124,46 @@ func (c *composer) clampCursor() {
 	if c.cursor > len(c.text) {
 		c.cursor = len(c.text)
 	}
+	if c.selAnchor > len(c.text) {
+		c.selAnchor = len(c.text)
+	}
 }
 
-// insertText inserts at the cursor (the frontend's replaceSelectedText).
+// ---- Shift-selection over committed text --------------------------------
+
+func (c *composer) hasSelection() bool {
+	return c.selAnchor >= 0 && c.selAnchor != c.cursor
+}
+
+// selRange returns the ordered [start, end) of the current selection.
+func (c *composer) selRange() (int, int) {
+	a, b := c.selAnchor, c.cursor
+	if a > b {
+		a, b = b, a
+	}
+	return a, b
+}
+
+func (c *composer) clearSelection() { c.selAnchor = -1 }
+
+// deleteSelection removes the selected range (if any) and returns true.
+func (c *composer) deleteSelection() bool {
+	if !c.hasSelection() {
+		c.selAnchor = -1
+		return false
+	}
+	a, b := c.selRange()
+	c.text = append(c.text[:a:a], c.text[b:]...)
+	c.cursor = a
+	c.selAnchor = -1
+	return true
+}
+
+// insertText inserts at the cursor, replacing any Shift-selection first
+// (the frontend's replaceSelectedText).
 func (c *composer) insertText(text string) {
+	c.deleteSelection()
+	c.goalCol = -1
 	c.clampCursor()
 	runes := []rune(text)
 	next := make([]rune, 0, len(c.text)+len(runes))
@@ -134,20 +175,30 @@ func (c *composer) insertText(text string) {
 }
 
 func (c *composer) deleteBeforeCursor() {
+	if c.deleteSelection() {
+		c.goalCol = -1
+		return
+	}
 	c.clampCursor()
 	if c.cursor == 0 {
 		return
 	}
 	c.text = append(c.text[:c.cursor-1:c.cursor-1], c.text[c.cursor:]...)
 	c.cursor--
+	c.goalCol = -1
 }
 
 func (c *composer) deleteAfterCursor() {
+	if c.deleteSelection() {
+		c.goalCol = -1
+		return
+	}
 	c.clampCursor()
 	if c.cursor >= len(c.text) {
 		return
 	}
 	c.text = append(c.text[:c.cursor:c.cursor], c.text[c.cursor+1:]...)
+	c.goalCol = -1
 }
 
 func (c *composer) resetComposition() {

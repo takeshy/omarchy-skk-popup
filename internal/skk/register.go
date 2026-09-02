@@ -13,7 +13,7 @@ func (e *Engine) openRegisterModal() {
 		return
 	}
 	e.registerKey = key
-	e.reg = composer{}
+	e.reg = composer{selAnchor: -1, goalCol: -1}
 	e.registerError = ""
 	e.registerOpen = true
 	e.status = "Register a new candidate."
@@ -287,7 +287,58 @@ func (e *Engine) handleRegisterKey(k Key) {
 	lower := toLowerASCII(k.Key)
 
 	if k.Ctrl && !k.Alt {
+		editable := !r.composing && r.roman == ""
 		switch lower {
+		case "a", "o":
+			if editable && len(r.text) > 0 {
+				r.selAnchor = 0
+				r.cursor = len(r.text)
+				r.goalCol = -1
+			}
+			return
+		case "h":
+			if editable {
+				e.moveCaretTo(r, lineStartOfPos(r.text, r.cursor), k.Shift)
+			}
+			return
+		case "e":
+			if editable {
+				e.moveCaretTo(r, lineEndOfPos(r.text, r.cursor), k.Shift)
+			}
+			return
+		case "f":
+			if editable {
+				e.moveCaret(r, 1, k.Shift)
+			}
+			return
+		case "b":
+			if editable {
+				e.moveCaret(r, -1, k.Shift)
+			}
+			return
+		case "k":
+			if editable {
+				e.killLine(r, 1)
+			}
+			return
+		case "u":
+			if editable {
+				e.killLine(r, -1)
+			}
+			return
+		case "c":
+			if r.hasSelection() && e.clip != nil {
+				a, b := r.selRange()
+				_ = e.clip.Copy(string(r.text[a:b]))
+			}
+			return
+		case "x":
+			if r.hasSelection() && e.clip != nil {
+				a, b := r.selRange()
+				_ = e.clip.Copy(string(r.text[a:b]))
+				r.deleteSelection()
+			}
+			return
 		case "g":
 			e.closeRegisterModalSilently()
 			return
@@ -400,7 +451,7 @@ func (e *Engine) handleRegisterKey(k Key) {
 			r.insertText(k.Key)
 			return
 		}
-		e.handleCaretKey(r, k.Key)
+		e.handleCaretKey(r, k)
 	}
 }
 

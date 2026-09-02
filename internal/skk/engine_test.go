@@ -368,6 +368,114 @@ func TestBackspaceAndCaret(t *testing.T) {
 	}
 }
 
+func shiftPress(e *Engine, name string) { e.HandleKey(Key{Key: name, Shift: true}) }
+
+func TestShiftSelection(t *testing.T) {
+	e, clip, _ := newTestEngine(t)
+	typeKeys(e, "aiueo") // あいうえお, cursor 5
+	press(e, "Home")     // cursor 0
+	shiftPress(e, "Right")
+	shiftPress(e, "Right") // select あい
+	if s := e.State(); s.SelStart != 0 || s.SelEnd != 2 || s.Cursor != 2 {
+		t.Fatalf("selection = %+v", s)
+	}
+	// Ctrl+C copies just the selection, without closing.
+	e.HandleKey(Key{Key: "c", Ctrl: true})
+	if len(clip.copied) != 1 || clip.copied[0] != "あい" {
+		t.Fatalf("ctrl+c = %v", clip.copied)
+	}
+	// Typing over the selection replaces it.
+	typeKeys(e, "ka")
+	if got := e.Text(); got != "かうえお" {
+		t.Fatalf("replace-selection = %q", got)
+	}
+	// Ctrl+O select-all + Ctrl+X cut clears the buffer to the clipboard.
+	e.HandleKey(Key{Key: "o", Ctrl: true})
+	if s := e.State(); s.SelStart != 0 || s.SelEnd != 4 {
+		t.Fatalf("select all = %+v", s)
+	}
+	e.HandleKey(Key{Key: "x", Ctrl: true})
+	if got := e.Text(); got != "" || clip.copied[len(clip.copied)-1] != "かうえお" {
+		t.Fatalf("cut = %q clip=%v", got, clip.copied)
+	}
+}
+
+func TestEmacsBindings(t *testing.T) {
+	e, _, _ := newTestEngine(t)
+	typeKeys(e, "aiueo") // あいうえお
+	e.HandleKey(Key{Key: "h", Ctrl: true})
+	if s := e.State(); s.Cursor != 0 {
+		t.Fatalf("C-h (head) cursor = %d", s.Cursor)
+	}
+	e.HandleKey(Key{Key: "a", Ctrl: true}) // select all
+	if s := e.State(); s.SelStart != 0 || s.SelEnd != 5 {
+		t.Fatalf("C-a select all = %+v", s)
+	}
+	e.HandleKey(Key{Key: "h", Ctrl: true}) // collapse to head (no shift -> clears sel)
+	e.HandleKey(Key{Key: "f", Ctrl: true})
+	e.HandleKey(Key{Key: "f", Ctrl: true}) // cursor 2
+	e.HandleKey(Key{Key: "k", Ctrl: true}) // kill to EOL -> あい
+	if got := e.Text(); got != "あい" {
+		t.Fatalf("C-k = %q", got)
+	}
+	e.HandleKey(Key{Key: "e", Ctrl: true}) // EOL (already)
+	typeKeys(e, "u")                       // あいう
+	e.HandleKey(Key{Key: "b", Ctrl: true}) // cursor 2
+	e.HandleKey(Key{Key: "u", Ctrl: true}) // kill to line start -> う
+	if got := e.Text(); got != "う" {
+		t.Fatalf("C-u = %q", got)
+	}
+	// Ctrl+Z undoes the last kill.
+	e.HandleKey(Key{Key: "z", Ctrl: true})
+	if got := e.Text(); got != "あいう" {
+		t.Fatalf("C-z = %q", got)
+	}
+	e.HandleKey(Key{Key: "z", Ctrl: true}) // undo the 'u' insert
+	e.HandleKey(Key{Key: "z", Ctrl: true}) // undo the C-k
+	if got := e.Text(); got != "あいうえお" {
+		t.Fatalf("C-z chain = %q", got)
+	}
+}
+
+func TestVerticalCaretVsHistory(t *testing.T) {
+	e, clip, _ := newTestEngine(t)
+	// Seed a history entry.
+	typeKeys(e, "Nihongo ")
+	press(e, "Enter")
+	press(e, "Enter") // copy "日本語" -> history, buffer cleared
+	if clip.copied[0] != "日本語" {
+		t.Fatalf("setup copy = %v", clip.copied)
+	}
+	// Multi-line draft.
+	typeKeys(e, "a")
+	e.HandleKey(Key{Key: "Enter", Shift: true})
+	typeKeys(e, "i")
+	e.HandleKey(Key{Key: "Enter", Shift: true})
+	typeKeys(e, "u") // "あ\nい\nう", cursor at end (line 2)
+	if e.Text() != "あ\nい\nう" {
+		t.Fatalf("draft = %q", e.Text())
+	}
+	// Up from the last line moves to the previous line, not history.
+	press(e, "Up")
+	if s := e.State(); s.Text != "あ\nい\nう" || s.Cursor != 3 {
+		t.Fatalf("up to line 1 = cursor %d text %q", s.Cursor, s.Text)
+	}
+	press(e, "Up") // now on line 0
+	if s := e.State(); s.Cursor != 1 || s.Text != "あ\nい\nう" {
+		t.Fatalf("up to line 0 = cursor %d", s.Cursor)
+	}
+	// Up again from line 0 -> history recall.
+	press(e, "Up")
+	if s := e.State(); s.Text != "日本語" {
+		t.Fatalf("up from line 0 should recall history: %q", s.Text)
+	}
+	// Down returns to the draft (last line boundary).
+	press(e, "Down")
+	if s := e.State(); s.Text != "あ\nい\nう" {
+		t.Fatalf("down restores draft: %q", s.Text)
+	}
+}
+
 func TestCompletionAndPurge(t *testing.T) {
 	e, _, p := newTestEngine(t)
 	e.dict.SetUserJSON(`{"かんじょう":["感情"]}`)
