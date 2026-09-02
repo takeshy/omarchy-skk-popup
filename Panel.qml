@@ -75,8 +75,8 @@ Item {
     "Shift+Enter  改行\n" +
     "Ctrl+V / Ctrl+Shift+V  クリップボードを挿入\n" +
     "Shift+矢印 / Shift+Home / Shift+End  範囲選択\n" +
-    "Ctrl+A  全選択 / Ctrl+C コピー / Ctrl+X 切り取り\n" +
-    "Ctrl+F / Ctrl+B  前後へ / Ctrl+H 行頭 / Ctrl+E 行末\n" +
+    "Ctrl+O  全選択 / Ctrl+C コピー / Ctrl+X 切り取り\n" +
+    "Ctrl+F / Ctrl+B  前後へ / Ctrl+A 行頭 / Ctrl+E 行末\n" +
     "Ctrl+K  行末まで削除 / Ctrl+U 行頭まで削除 / Ctrl+Z 元に戻す\n" +
     "↑ / ↓  複数行なら行移動、1行目↑/最終行↓ でコピー履歴\n" +
     "\n── その他 ──\n" +

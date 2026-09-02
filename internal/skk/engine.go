@@ -938,14 +938,14 @@ func (e *Engine) handleMainKey(k Key) {
 	if k.Ctrl && !k.Alt {
 		editable := !c.composing && c.roman == "" && !c.abbrevMode
 		switch lower {
-		case "a", "o": // select all
+		case "o": // select all (app-specific)
 			if editable && len(c.text) > 0 {
 				c.selAnchor = 0
 				c.cursor = len(c.text)
 				c.goalCol = -1
 			}
 			return
-		case "h": // beginning of line ("head")
+		case "a": // beginning of line (Emacs)
 			if editable {
 				e.moveCaretTo(c, lineStartOfPos(c.text, c.cursor), k.Shift)
 			}

@@ -289,14 +289,14 @@ func (e *Engine) handleRegisterKey(k Key) {
 	if k.Ctrl && !k.Alt {
 		editable := !r.composing && r.roman == ""
 		switch lower {
-		case "a", "o":
+		case "o":
 			if editable && len(r.text) > 0 {
 				r.selAnchor = 0
 				r.cursor = len(r.text)
 				r.goalCol = -1
 			}
 			return
-		case "h":
+		case "a":
 			if editable {
 				e.moveCaretTo(r, lineStartOfPos(r.text, r.cursor), k.Shift)
 			}

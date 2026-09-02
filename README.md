@@ -118,8 +118,8 @@ o.bind("CTRL + SHIFT + K", "SKK popup", "omarchy-shell shell summon takeshy.skk-
 - `Ctrl+V` / `Ctrl+Shift+V`: クリップボードの内容を挿入
 - 非変換時の確定文字列の編集 (web の textarea 風):
   - `Shift+矢印` / `Shift+Home` / `Shift+End`: 範囲選択（選択中に入力・`Backspace` で置換）
-  - `Ctrl+A`: 全選択 / `Ctrl+C`: 選択をコピー（閉じない）/ `Ctrl+X`: 選択を切り取り
-  - Emacs 風: `Ctrl+F` / `Ctrl+B` カーソル前後 / `Ctrl+H` 行頭 / `Ctrl+E` 行末 / `Ctrl+K` 行末まで削除 / `Ctrl+U` 行頭まで削除
+  - `Ctrl+O`: 全選択 / `Ctrl+C`: 選択をコピー（閉じない）/ `Ctrl+X`: 選択を切り取り
+  - Emacs 風: `Ctrl+F` / `Ctrl+B` カーソル前後 / `Ctrl+A` 行頭 / `Ctrl+E` 行末 / `Ctrl+K` 行末まで削除 / `Ctrl+U` 行頭まで削除
   - `Ctrl+Z`: 元に戻す
   - `↑` / `↓`: 複数行のときは上下の行へ移動。1 行目で `↑`（最終行で `↓`）はコピー履歴へ
 - `Escape`: 選択中は選択解除 / 変換中はキャンセル / 未変換状態ならパネルを閉じる (コピーせず、入力内容は次回まで保持)

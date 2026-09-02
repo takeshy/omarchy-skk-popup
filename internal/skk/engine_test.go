@@ -403,15 +403,15 @@ func TestShiftSelection(t *testing.T) {
 func TestEmacsBindings(t *testing.T) {
 	e, _, _ := newTestEngine(t)
 	typeKeys(e, "aiueo") // あいうえお
-	e.HandleKey(Key{Key: "h", Ctrl: true})
+	e.HandleKey(Key{Key: "a", Ctrl: true})
 	if s := e.State(); s.Cursor != 0 {
-		t.Fatalf("C-h (head) cursor = %d", s.Cursor)
+		t.Fatalf("C-a (line head) cursor = %d", s.Cursor)
 	}
-	e.HandleKey(Key{Key: "a", Ctrl: true}) // select all
+	e.HandleKey(Key{Key: "o", Ctrl: true}) // select all
 	if s := e.State(); s.SelStart != 0 || s.SelEnd != 5 {
-		t.Fatalf("C-a select all = %+v", s)
+		t.Fatalf("C-o select all = %+v", s)
 	}
-	e.HandleKey(Key{Key: "h", Ctrl: true}) // collapse to head (no shift -> clears sel)
+	e.HandleKey(Key{Key: "a", Ctrl: true}) // collapse to head (no shift -> clears sel)
 	e.HandleKey(Key{Key: "f", Ctrl: true})
 	e.HandleKey(Key{Key: "f", Ctrl: true}) // cursor 2
 	e.HandleKey(Key{Key: "k", Ctrl: true}) // kill to EOL -> あい
